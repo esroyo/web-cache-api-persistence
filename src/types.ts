@@ -53,7 +53,7 @@ export interface CachePersistenceConstructable {
 }
 
 export interface CachePersistenceFactory {
-    create(): Promise<CachePersistenceLike>;
+    create(cacheName: string): Promise<CachePersistenceLike>;
 }
 
 export interface CacheLike extends Cache {
@@ -82,6 +82,9 @@ export interface CacheHeaderNormalizer {
 export interface CachePersistenceBaseOptions {
     compress?: boolean;
 }
+
+export interface CachePersistenceMemoryOptions
+    extends CachePersistenceBaseOptions {}
 
 export interface CachePersistenceRedisOptions
     extends RedisConnectOptions, PoolOptions, CachePersistenceBaseOptions {}

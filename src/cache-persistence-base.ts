@@ -1,13 +1,29 @@
-import { create3 } from '@jabr/xxhash64';
+import { create3, type Hasher } from '@jabr/xxhash64';
 import { monotonicUlid } from '@std/ulid';
-import type { PlainReq, PlainReqResMeta, PlainRes } from './types.ts';
+import msgpack from 'msgpack-lite';
+import type {
+    CachePersistenceBaseOptions,
+    PlainReq,
+    PlainReqRes,
+    PlainReqResMeta,
+    PlainRes,
+} from './types.ts';
 
 export abstract class CachePersistenceBase {
-    protected _decoder = new TextDecoder();
-    protected _defaultExpireIn = 2_592_000_000; /* 1000 * 60 * 60 * 24 * 30 */
-    protected _encoder = new TextEncoder();
+    protected _decoder: TextDecoder = new TextDecoder();
+    protected _defaultExpireIn: number =
+        2_592_000_000; /* 1000 * 60 * 60 * 24 * 30 */
+    protected _encoder: TextEncoder = new TextEncoder();
     protected _counter: Record<number, number> = Object.create(null);
-    protected _hasherPromise = create3();
+    protected _hasherPromise: Promise<Hasher> = create3();
+    protected _msgpackCodec = msgpack.createCodec({
+        uint8array: true,
+        preset: true,
+    });
+    protected _options: CachePersistenceBaseOptions = {};
+    protected get _defaultOptions(): CachePersistenceBaseOptions {
+        return { compress: false };
+    }
 
     protected _created(): readonly [number, number] {
         const now = Date.now();
@@ -174,11 +190,69 @@ export abstract class CachePersistenceBase {
         };
     }
 
+    protected async _pairToPlain(
+        request: Request,
+        response: Response,
+    ): Promise<[PlainReqRes, expiresIn: number] | null> {
+        const expiresIn = this._expiresIn(response);
+        if (expiresIn <= 0) {
+            return null;
+        }
+
+        const [plainReq, plainRes] = await Promise.all([
+            this._requestToPlain(request),
+            this._responseToPlain(response),
+        ]);
+        const created = this._created();
+        return [{
+            created: created.join('-'),
+            expires: String(created[0] + expiresIn),
+            id: await this._randomId(),
+            ...plainReq,
+            ...plainRes,
+        }, expiresIn];
+    }
+
     protected _joinKey(key: string[]): string {
         return key.join(':');
     }
 
     protected _splitKey(key: string): string[] {
         return key.split(':');
+    }
+
+    protected _serialize(plainReqRes: PlainReqRes): Uint8Array {
+        if (this._options.compress) {
+            return msgpack.encode(plainReqRes, { codec: this._msgpackCodec });
+        }
+        return this._encoder.encode(JSON.stringify({
+            ...plainReqRes,
+            ...(plainReqRes.reqBody &&
+                { reqBody: this._decoder.decode(plainReqRes.reqBody) }),
+            ...(plainReqRes.resBody &&
+                { resBody: this._decoder.decode(plainReqRes.resBody) }),
+        }));
+    }
+
+    protected _parse(serializedPlainReqRes: Uint8Array): PlainReqRes {
+        if (this._options.compress) {
+            return msgpack.decode(serializedPlainReqRes, {
+                codec: this._msgpackCodec,
+            });
+        }
+        const plainReqRes = JSON.parse(
+            this._decoder.decode(serializedPlainReqRes),
+        ) as PlainReqRes;
+        if (plainReqRes.reqBody) {
+            plainReqRes.reqBody = this._encoder.encode(
+                plainReqRes.reqBody as unknown as string,
+            );
+        }
+        if (plainReqRes.resBody) {
+            plainReqRes.resBody = this._encoder.encode(
+                plainReqRes.resBody as unknown as string,
+            );
+        }
+        return plainReqRes;
     }
 }

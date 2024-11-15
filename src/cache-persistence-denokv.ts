@@ -1,5 +1,4 @@
 import { createPool, type Pool } from 'generic-pool';
-import msgpack from 'msgpack-lite';
 import { get as kvToolboxGet } from '@kitsonk/kv-toolbox/blob';
 import { batchedAtomic } from '@kitsonk/kv-toolbox/batched_atomic';
 
@@ -13,24 +12,21 @@ import * as webidl from './webidl.ts';
 
 export class CachePersistenceDenoKv extends CachePersistenceBase
     implements CachePersistenceLike {
-    protected _defaultOptions: CachePersistenceDenoKvOptions = {
-        // Pool defaults
-        max: 1,
-        min: 1,
-        // Custom
-        compress: false,
-    };
-    protected _options: CachePersistenceDenoKvOptions;
-    protected _kvPool: Pool<Deno.Kv>;
-    protected _msgpackCodec = msgpack.createCodec({
-        uint8array: true,
-        preset: true,
-    });
+    protected override _options: CachePersistenceDenoKvOptions;
+    protected _dbPool: Pool<Deno.Kv>;
+    protected override get _defaultOptions(): CachePersistenceDenoKvOptions {
+        return {
+            ...super._defaultOptions,
+            // Pool defaults
+            max: 1,
+            min: 1,
+        };
+    }
 
     constructor(options?: CachePersistenceDenoKvOptions) {
         super();
         this._options = { ...this._defaultOptions, ...options };
-        this._kvPool = createPool<Deno.Kv>({
+        this._dbPool = createPool<Deno.Kv>({
             create: async () => Deno.openKv(this._options.path),
             destroy: async (kv) => {
                 kv.close();
@@ -43,30 +39,20 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
         request: Request,
         response: Response,
     ): Promise<boolean> {
-        const expiresIn = this._expiresIn(response);
-        if (expiresIn <= 0) {
+        const pair = await this._pairToPlain(request, response);
+
+        if (!pair) {
             return false;
         }
 
-        const [plainReq, plainRes] = await Promise.all([
-            this._requestToPlain(request),
-            this._responseToPlain(response),
-        ]);
-        const created = this._created();
-        const plainReqRes = {
-            created: created.join('-'),
-            expires: String(created[0] + expiresIn),
-            id: await this._randomId(),
-            ...plainReq,
-            ...plainRes,
-        };
+        const [plainReqRes, expiresIn] = pair;
 
         const persistenceKey = await this._persistenceKey(
             cacheName,
             plainReqRes,
         );
 
-        await this._kvSet(
+        await this._dbSet(
             persistenceKey,
             plainReqRes,
             expiresIn,
@@ -85,10 +71,10 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
                 cacheName,
                 request,
             );
-            const keys = await this._kvKeys(persistenceKey);
+            const keys = await this._dbKeys(persistenceKey);
             let hasDeleted = false;
             for (const key of keys) {
-                await this._kvDel(key);
+                await this._dbDel(key);
                 hasDeleted = true;
             }
             return hasDeleted;
@@ -99,7 +85,7 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
             request,
             response,
         );
-        await this._kvDel(persistenceKey);
+        await this._dbDel(persistenceKey);
         return true;
     }
 
@@ -108,9 +94,9 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
         request: Request,
     ): AsyncGenerator<readonly [Request, Response], void, unknown> {
         const persistenceKey = await this._persistenceKey(cacheName, request);
-        const keys = await this._kvKeys(persistenceKey);
+        const keys = await this._dbKeys(persistenceKey);
         for (const key of keys) {
-            const plainReqRes = await this._kvGet(key);
+            const plainReqRes = await this._dbGet(key);
             if (!plainReqRes) {
                 continue;
             }
@@ -131,12 +117,11 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
             "Failed to execute '[[Symbol.asyncIterator]]' on 'CachePersistence'";
         webidl.requiredArguments(arguments.length, 1, prefix);
         const instance = this;
-        let persistenceKey: string[] = [];
         return (async function* () {
-            persistenceKey = await instance._persistenceKey(cacheName);
-            const keys = await instance._kvScan(persistenceKey);
+            const persistenceKey = await instance._persistenceKey(cacheName);
+            const keys = await instance._dbScan(persistenceKey);
             for (const key of keys) {
-                const plainReqRes = await instance._kvGet(key);
+                const plainReqRes = await instance._dbGet(key);
                 if (!plainReqRes) {
                     continue;
                 }
@@ -149,12 +134,12 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
     }
 
     async [Symbol.asyncDispose](_cacheName: string): Promise<void> {
-        await this._kvPool.drain();
-        await this._kvPool.clear();
+        await this._dbPool.drain();
+        await this._dbPool.clear();
     }
 
-    protected async _kvScan(key: string[]): Promise<string[][]> {
-        const kv = await this._kvPool.acquire();
+    protected async _dbScan(key: string[]): Promise<string[][]> {
+        const kv = await this._dbPool.acquire();
         const iter = kv.list<string>({ prefix: key });
         const found = new Set<string>();
         for await (const res of iter) {
@@ -162,18 +147,18 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
                 found.add(this._joinKey(res.key.slice(0, 4) as string[]));
             }
         }
-        await this._kvPool.release(kv);
+        await this._dbPool.release(kv);
         return [...found]
             .sort()
             .reverse()
             .map((key) => this._splitKey(key));
     }
 
-    protected async _kvKeys(key: string[]): Promise<string[][]> {
+    protected async _dbKeys(key: string[]): Promise<string[][]> {
         const indexKey = this._indexKey(key);
-        const kv = await this._kvPool.acquire();
+        const kv = await this._dbPool.acquire();
         const indexRes = await kv.get<Set<string>>(indexKey);
-        await this._kvPool.release(kv);
+        await this._dbPool.release(kv);
         if (!indexRes.value) {
             return [];
         }
@@ -184,19 +169,19 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
         return found;
     }
 
-    protected async _kvGet(key: string[]): Promise<PlainReqRes | null> {
-        const kv = await this._kvPool.acquire();
+    protected async _dbGet(key: string[]): Promise<PlainReqRes | null> {
+        const kv = await this._dbPool.acquire();
         const result = await kvToolboxGet(kv, key);
-        await this._kvPool.release(kv);
+        await this._dbPool.release(kv);
         if (!result.value) {
             return null;
         }
         return this._parse(result.value as Uint8Array) as PlainReqRes;
     }
 
-    protected async _kvDel(key: string[]): Promise<void> {
+    protected async _dbDel(key: string[]): Promise<void> {
         const indexKey = this._indexKey(key);
-        const kv = await this._kvPool.acquire();
+        const kv = await this._dbPool.acquire();
         const indexRes = await kv.get<Set<string>>(indexKey);
         const index = indexRes.value || new Set<string>();
         index.delete(this._joinKey(key));
@@ -209,16 +194,16 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
             op.delete(indexKey);
         }
         await op.commit();
-        await this._kvPool.release(kv);
+        await this._dbPool.release(kv);
     }
 
-    protected async _kvSet(
+    protected async _dbSet(
         key: string[],
         value: PlainReqRes,
         expireIn: number,
     ): Promise<void> {
         const indexKey = this._indexKey(key);
-        const kv = await this._kvPool.acquire();
+        const kv = await this._dbPool.acquire();
         const indexRes = await kv.get<Set<string>>(indexKey);
         const index = indexRes.value || new Set<string>();
         index.add(this._joinKey(key));
@@ -227,47 +212,12 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
             .set(indexKey, index, { expireIn: this._defaultExpireIn })
             .setBlob(key, this._serialize(value), { expireIn })
             .commit();
-        await this._kvPool.release(kv);
+        await this._dbPool.release(kv);
     }
 
     protected _indexKey(
         key: string[],
     ): string[] {
         return key.slice(0, 3);
-    }
-
-    protected _serialize(plainReqRes: PlainReqRes): Uint8Array {
-        if (this._options.compress) {
-            return msgpack.encode(plainReqRes, { codec: this._msgpackCodec });
-        }
-        return this._encoder.encode(JSON.stringify({
-            ...plainReqRes,
-            ...(plainReqRes.reqBody &&
-                { reqBody: this._decoder.decode(plainReqRes.reqBody) }),
-            ...(plainReqRes.resBody &&
-                { resBody: this._decoder.decode(plainReqRes.resBody) }),
-        }));
-    }
-
-    protected _parse(serializedPlainReqRes: Uint8Array): PlainReqRes {
-        if (this._options.compress) {
-            return msgpack.decode(serializedPlainReqRes, {
-                codec: this._msgpackCodec,
-            });
-        }
-        const plainReqRes = JSON.parse(
-            this._decoder.decode(serializedPlainReqRes),
-        ) as PlainReqRes;
-        if (plainReqRes.reqBody) {
-            plainReqRes.reqBody = this._encoder.encode(
-                plainReqRes.reqBody as unknown as string,
-            );
-        }
-        if (plainReqRes.resBody) {
-            plainReqRes.resBody = this._encoder.encode(
-                plainReqRes.resBody as unknown as string,
-            );
-        }
-        return plainReqRes;
     }
 }

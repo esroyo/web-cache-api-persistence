@@ -1,5 +1,4 @@
 import { createPool, type Pool } from 'generic-pool';
-import msgpack from 'msgpack-lite';
 import { connect, type Redis } from 'redis';
 import type {
     CachePersistenceLike,
@@ -11,28 +10,25 @@ import * as webidl from './webidl.ts';
 
 export class CachePersistenceRedis extends CachePersistenceBase
     implements CachePersistenceLike {
-    protected _defaultOptions: CachePersistenceRedisOptions = {
-        // Redis defaults
-        hostname: '127.0.0.1',
-        port: '6379',
-        // Pool defaults
-        max: 4,
-        min: 2,
-        testOnBorrow: true,
-        // Custom
-        compress: false,
-    };
-    protected _options: CachePersistenceRedisOptions;
-    protected _redisPool: Pool<Redis>;
-    protected _msgpackCodec = msgpack.createCodec({
-        uint8array: true,
-        preset: true,
-    });
+    protected override _options: CachePersistenceRedisOptions;
+    protected _dbPool: Pool<Redis>;
+    protected override get _defaultOptions(): CachePersistenceRedisOptions {
+        return {
+            ...super._defaultOptions,
+            // Redis defaults
+            hostname: '127.0.0.1',
+            port: '6379',
+            // Pool defaults
+            max: 4,
+            min: 2,
+            testOnBorrow: true,
+        };
+    }
 
     constructor(options?: CachePersistenceRedisOptions) {
         super();
         this._options = { ...this._defaultOptions, ...options };
-        this._redisPool = createPool<Redis>({
+        this._dbPool = createPool<Redis>({
             create: async () => connect(this._options),
             destroy: async (client) => client.close(),
             validate: async (client) => {
@@ -49,30 +45,20 @@ export class CachePersistenceRedis extends CachePersistenceBase
         request: Request,
         response: Response,
     ): Promise<boolean> {
-        const expiresIn = this._expiresIn(response);
-        if (expiresIn <= 0) {
+        const pair = await this._pairToPlain(request, response);
+
+        if (!pair) {
             return false;
         }
 
-        const [plainReq, plainRes] = await Promise.all([
-            this._requestToPlain(request),
-            this._responseToPlain(response),
-        ]);
-        const created = this._created();
-        const plainReqRes = {
-            created: created.join('-'),
-            expires: String(created[0] + expiresIn),
-            id: await this._randomId(),
-            ...plainReq,
-            ...plainRes,
-        };
+        const [plainReqRes, expiresIn] = pair;
 
         const persistenceKey = await this._persistenceKey(
             cacheName,
             plainReqRes,
         );
 
-        await this._redisSet(
+        await this._dbSet(
             persistenceKey,
             plainReqRes,
             expiresIn,
@@ -92,11 +78,11 @@ export class CachePersistenceRedis extends CachePersistenceBase
                 request,
             );
             const toDelete: string[] = [];
-            for await (const key of this._redisKeys(persistenceKey)) {
-                // WARN: do not remove while iterating with _redisKeys
+            for await (const key of this._dbKeys(persistenceKey)) {
+                // WARN: do not remove while iterating with _dbKeys
                 toDelete.push(key);
             }
-            return await this._redisDel(...toDelete);
+            return await this._dbDel(...toDelete);
         }
 
         const persistenceKey = await this._persistenceKey(
@@ -104,7 +90,7 @@ export class CachePersistenceRedis extends CachePersistenceBase
             request,
             response,
         );
-        return await this._redisDel(persistenceKey);
+        return await this._dbDel(persistenceKey);
     }
 
     async *get(
@@ -112,8 +98,8 @@ export class CachePersistenceRedis extends CachePersistenceBase
         request: Request,
     ): AsyncGenerator<readonly [Request, Response], void, unknown> {
         const persistenceKey = await this._persistenceKey(cacheName, request);
-        for await (const key of this._redisKeys(persistenceKey)) {
-            const plainReqRes = await this._redisGet(key);
+        for await (const key of this._dbKeys(persistenceKey)) {
+            const plainReqRes = await this._dbGet(key);
             if (!plainReqRes) {
                 continue;
             }
@@ -134,12 +120,11 @@ export class CachePersistenceRedis extends CachePersistenceBase
             "Failed to execute '[[Symbol.asyncIterator]]' on 'CachePersistence'";
         webidl.requiredArguments(arguments.length, 1, prefix);
         const instance = this;
-        let persistenceKey: string[] = [];
         return (async function* () {
-            persistenceKey = await instance._persistenceKey(cacheName);
-            const keys = await instance._redisScan([...persistenceKey, '*']);
+            const persistenceKey = await instance._persistenceKey(cacheName);
+            const keys = await instance._dbScan([...persistenceKey, '*']);
             for (const key of keys) {
-                const plainReqRes = await instance._redisGet(key);
+                const plainReqRes = await instance._dbGet(key);
                 if (!plainReqRes) {
                     continue;
                 }
@@ -152,15 +137,15 @@ export class CachePersistenceRedis extends CachePersistenceBase
     }
 
     async [Symbol.asyncDispose](_cacheName: string): Promise<void> {
-        await this._redisPool.drain();
-        await this._redisPool.clear();
+        await this._dbPool.drain();
+        await this._dbPool.clear();
     }
 
-    protected async _redisScan(pattern: string[]): Promise<string[]> {
+    protected async _dbScan(pattern: string[]): Promise<string[]> {
         const found = [];
         let cursor = '0';
         const persistenceKey = this._joinKey(pattern);
-        const redis = await this._redisPool.acquire();
+        const redis = await this._dbPool.acquire();
         do {
             const reply = await redis.scan(+cursor, {
                 pattern: persistenceKey,
@@ -170,12 +155,12 @@ export class CachePersistenceRedis extends CachePersistenceBase
             cursor = reply[0];
             found.push(...reply[1]);
         } while (cursor !== '0');
-        await this._redisPool.release(redis);
+        await this._dbPool.release(redis);
         found.sort().reverse();
         return found;
     }
 
-    protected async *_redisKeys(
+    protected async *_dbKeys(
         key: string[],
     ): AsyncGenerator<string, void, unknown> {
         const indexKey = this._indexKey(key);
@@ -183,7 +168,7 @@ export class CachePersistenceRedis extends CachePersistenceBase
         let offset = 0;
         let result: string[] = [];
         do {
-            const redis = await this._redisPool.acquire();
+            const redis = await this._dbPool.acquire();
             result = (await redis.sendCommand('ZRANGE', [
                 indexKey,
                 '+inf',
@@ -194,7 +179,7 @@ export class CachePersistenceRedis extends CachePersistenceBase
                 offset,
                 count,
             ]) as string[]) ?? [];
-            await this._redisPool.release(redis);
+            await this._dbPool.release(redis);
             if (result.length) {
                 offset += result.length;
                 for (const key of result) {
@@ -204,25 +189,25 @@ export class CachePersistenceRedis extends CachePersistenceBase
         } while (result.length);
     }
 
-    protected async _redisGet(
+    protected async _dbGet(
         key: string[] | string,
     ): Promise<PlainReqRes | null> {
         const persistenceKey = Array.isArray(key) ? this._joinKey(key) : key;
-        const redis = await this._redisPool.acquire();
+        const redis = await this._dbPool.acquire();
         const result = await redis.sendCommand('GET', [persistenceKey], {
             returnUint8Arrays: true,
         }) as Uint8Array;
-        await this._redisPool.release(redis);
+        await this._dbPool.release(redis);
         if (!result) {
             return null;
         }
         return this._parse(result) as PlainReqRes;
     }
 
-    protected async _redisDel(
+    protected async _dbDel(
         ...keys: Array<string[] | string>
     ): Promise<boolean> {
-        const redis = await this._redisPool.acquire();
+        const redis = await this._dbPool.acquire();
         const tx = redis.pipeline();
         for (const key of keys) {
             const persistenceKey = Array.isArray(key)
@@ -233,11 +218,11 @@ export class CachePersistenceRedis extends CachePersistenceBase
             tx.zrem(indexKey, persistenceKey);
         }
         const result = await tx.flush();
-        await this._redisPool.release(redis);
+        await this._dbPool.release(redis);
         return result.length && result[0] ? true : false;
     }
 
-    protected async _redisSet(
+    protected async _dbSet(
         key: string[],
         value: PlainReqRes,
         expiresIn: number,
@@ -245,14 +230,14 @@ export class CachePersistenceRedis extends CachePersistenceBase
         const effectiveKey = this._joinKey(key);
         const created = value.created.split('-');
         const indexKey = this._indexKey(key);
-        const redis = await this._redisPool.acquire();
+        const redis = await this._dbPool.acquire();
         const tx = redis.tx();
         tx.set(effectiveKey, this._serialize(value));
         tx.pexpire(effectiveKey, expiresIn);
         tx.zadd(indexKey, +(+created[0] * 1000 + created[1]), effectiveKey);
         tx.pexpire(indexKey, this._defaultExpireIn);
         await tx.flush();
-        await this._redisPool.release(redis);
+        await this._dbPool.release(redis);
     }
 
     protected _indexKey(
@@ -260,40 +245,5 @@ export class CachePersistenceRedis extends CachePersistenceBase
     ): string {
         const splitKey = Array.isArray(key) ? key : this._splitKey(key);
         return this._joinKey(splitKey.slice(0, 3));
-    }
-
-    protected _serialize(plainReqRes: PlainReqRes): Uint8Array {
-        if (this._options.compress) {
-            return msgpack.encode(plainReqRes, { codec: this._msgpackCodec });
-        }
-        return this._encoder.encode(JSON.stringify({
-            ...plainReqRes,
-            ...(plainReqRes.reqBody &&
-                { reqBody: this._decoder.decode(plainReqRes.reqBody) }),
-            ...(plainReqRes.resBody &&
-                { resBody: this._decoder.decode(plainReqRes.resBody) }),
-        }));
-    }
-
-    protected _parse(serializedPlainReqRes: Uint8Array): PlainReqRes {
-        if (this._options.compress) {
-            return msgpack.decode(serializedPlainReqRes, {
-                codec: this._msgpackCodec,
-            });
-        }
-        const plainReqRes = JSON.parse(
-            this._decoder.decode(serializedPlainReqRes),
-        ) as PlainReqRes;
-        if (plainReqRes.reqBody) {
-            plainReqRes.reqBody = this._encoder.encode(
-                plainReqRes.reqBody as unknown as string,
-            );
-        }
-        if (plainReqRes.resBody) {
-            plainReqRes.resBody = this._encoder.encode(
-                plainReqRes.resBody as unknown as string,
-            );
-        }
-        return plainReqRes;
     }
 }

@@ -39,7 +39,7 @@ export class CacheStorage implements CacheStorageLike {
         if (existingCache) {
             return existingCache[0];
         }
-        const persistence = await this._persistenceFactory.create();
+        const persistence = await this._persistenceFactory.create(cacheName);
         const cache = new Cache(cacheName, persistence, this._normalizeHeader);
         this._cache[cacheName] = [cache, persistence];
         return cache;
