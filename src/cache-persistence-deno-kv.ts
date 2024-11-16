@@ -139,24 +139,24 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
     }
 
     protected async _dbScan(key: string[]): Promise<string[][]> {
-        const kv = await this._dbPool.acquire();
-        const iter = kv.list<string>({ prefix: key });
+        const client = await this._dbPool.acquire();
+        const iter = client.list<string>({ prefix: key });
         const found = [];
         for await (const res of iter) {
             if (res.key.length === 3) { // This is an index (a Set)
                 found.push(...res.value);
             }
         }
-        await this._dbPool.release(kv);
+        await this._dbPool.release(client);
         return [...found]
             .map((key) => this._splitKey(key));
     }
 
     protected async _dbKeys(key: string[]): Promise<string[][]> {
         const indexKey = this._indexKey(key);
-        const kv = await this._dbPool.acquire();
-        const indexRes = await kv.get<Set<string>>(indexKey);
-        await this._dbPool.release(kv);
+        const client = await this._dbPool.acquire();
+        const indexRes = await client.get<Set<string>>(indexKey);
+        await this._dbPool.release(client);
         if (!indexRes.value) {
             return [];
         }
@@ -168,9 +168,11 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
     }
 
     protected async _dbGet(key: string[]): Promise<PlainReqRes | null> {
-        const kv = await this._dbPool.acquire();
-        const result = await kvToolboxGet(kv, key, { consistency: 'eventual' });
-        await this._dbPool.release(kv);
+        const client = await this._dbPool.acquire();
+        const result = await kvToolboxGet(client, key, {
+            consistency: 'eventual',
+        });
+        await this._dbPool.release(client);
         if (!result.value) {
             await this._dbDel(key);
             return null;
@@ -180,11 +182,11 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
 
     protected async _dbDel(key: string[]): Promise<void> {
         const indexKey = this._indexKey(key);
-        const kv = await this._dbPool.acquire();
-        const indexRes = await kv.get<Set<string>>(indexKey);
+        const client = await this._dbPool.acquire();
+        const indexRes = await client.get<Set<string>>(indexKey);
         const index = indexRes.value || new Set<string>();
         index.delete(this._joinKey(key));
-        const op = batchedAtomic(kv)
+        const op = batchedAtomic(client)
             .check(indexRes)
             .deleteBlob(key);
         if (index.size) {
@@ -193,7 +195,7 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
             op.delete(indexKey);
         }
         await op.commit();
-        await this._dbPool.release(kv);
+        await this._dbPool.release(client);
     }
 
     protected async _dbSet(
@@ -202,16 +204,16 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
         expireIn: number,
     ): Promise<void> {
         const indexKey = this._indexKey(key);
-        const kv = await this._dbPool.acquire();
-        const indexRes = await kv.get<Set<string>>(indexKey);
+        const client = await this._dbPool.acquire();
+        const indexRes = await client.get<Set<string>>(indexKey);
         const index = indexRes.value || new Set<string>();
         index.add(this._joinKey(key));
-        await batchedAtomic(kv)
+        await batchedAtomic(client)
             .check(indexRes)
             .set(indexKey, index, { expireIn: this._defaultExpireIn })
             .setBlob(key, this._serialize(value), { expireIn })
             .commit();
-        await this._dbPool.release(kv);
+        await this._dbPool.release(client);
     }
 
     protected _indexKey(

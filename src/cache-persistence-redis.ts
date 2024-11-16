@@ -149,17 +149,23 @@ export class CachePersistenceRedis extends CachePersistenceBase
         const found = [];
         let cursor = '0';
         const persistenceKey = this._joinKey(pattern);
-        const redis = await this._dbPool.acquire();
+        const client = await this._dbPool.acquire();
         do {
-            const reply = await redis.scan(+cursor, {
-                pattern: persistenceKey,
-                type: 'zset',
-                count: 100_000,
-            });
-            cursor = reply[0];
-            indexes.push(...reply[1]);
+            const reply = await client.sendCommand('SCAN', [
+                +cursor,
+                'MATCH',
+                persistenceKey,
+                'COUNT',
+                100_000,
+                'TYPE',
+                'zset',
+            ]);
+            if (reply && Array.isArray(reply)) {
+                cursor = reply[0] as string;
+                indexes.push(...reply[1] as string[]);
+            }
         } while (cursor !== '0');
-        await this._dbPool.release(redis);
+        await this._dbPool.release(client);
         for (const index of indexes) {
             for await (const key of this._dbKeys(this._splitKey(index))) {
                 found.push(key);
@@ -176,8 +182,8 @@ export class CachePersistenceRedis extends CachePersistenceBase
         let offset = 0;
         let result: string[] = [];
         do {
-            const redis = await this._dbPool.acquire();
-            result = (await redis.sendCommand('ZRANGE', [
+            const client = await this._dbPool.acquire();
+            result = (await client.sendCommand('ZRANGE', [
                 indexKey,
                 '+inf',
                 '-inf',
@@ -187,7 +193,7 @@ export class CachePersistenceRedis extends CachePersistenceBase
                 offset,
                 count,
             ]) as string[]) ?? [];
-            await this._dbPool.release(redis);
+            await this._dbPool.release(client);
             if (result.length) {
                 offset += result.length;
                 for (const key of result) {
@@ -201,11 +207,11 @@ export class CachePersistenceRedis extends CachePersistenceBase
         key: string[] | string,
     ): Promise<PlainReqRes | null> {
         const persistenceKey = Array.isArray(key) ? this._joinKey(key) : key;
-        const redis = await this._dbPool.acquire();
-        const result = await redis.sendCommand('GET', [persistenceKey], {
+        const client = await this._dbPool.acquire();
+        const result = await client.sendCommand('GET', [persistenceKey], {
             returnUint8Arrays: true,
         }) as Uint8Array;
-        await this._dbPool.release(redis);
+        await this._dbPool.release(client);
         if (!result) {
             await this._dbDel(key);
             return null;
@@ -216,18 +222,18 @@ export class CachePersistenceRedis extends CachePersistenceBase
     protected async _dbDel(
         ...keys: Array<string[] | string>
     ): Promise<boolean> {
-        const redis = await this._dbPool.acquire();
-        const tx = redis.pipeline();
+        const client = await this._dbPool.acquire();
+        const tx = client.tx();
         for (const key of keys) {
             const persistenceKey = Array.isArray(key)
                 ? this._joinKey(key)
                 : key;
             const indexKey = this._indexKey(key);
-            tx.del(persistenceKey);
-            tx.zrem(indexKey, persistenceKey);
+            tx.sendCommand('DEL', [persistenceKey]);
+            tx.sendCommand('ZREM', [indexKey, persistenceKey]);
         }
         const result = await tx.flush();
-        await this._dbPool.release(redis);
+        await this._dbPool.release(client);
         return result.length && result[0] ? true : false;
     }
 
@@ -239,14 +245,18 @@ export class CachePersistenceRedis extends CachePersistenceBase
         const effectiveKey = this._joinKey(key);
         const created = value.created.split('-');
         const indexKey = this._indexKey(key);
-        const redis = await this._dbPool.acquire();
-        const tx = redis.tx();
-        tx.set(effectiveKey, this._serialize(value));
-        tx.pexpire(effectiveKey, expiresIn);
-        tx.zadd(indexKey, +(+created[0] * 1000 + created[1]), effectiveKey);
-        tx.pexpire(indexKey, this._defaultExpireIn);
+        const client = await this._dbPool.acquire();
+        const tx = client.tx();
+        tx.sendCommand('SET', [effectiveKey, this._serialize(value)]);
+        tx.sendCommand('PEXPIRE', [effectiveKey, expiresIn]);
+        tx.sendCommand('ZADD', [
+            indexKey,
+            +(+created[0] * 1000 + created[1]),
+            effectiveKey,
+        ]);
+        tx.sendCommand('PEXPIRE', [indexKey, this._defaultExpireIn]);
         await tx.flush();
-        await this._dbPool.release(redis);
+        await this._dbPool.release(client);
     }
 
     protected _indexKey(
