@@ -13,6 +13,8 @@ import { CacheStorage } from './cache-storage.ts';
 declare var caches: CacheStorageLike;
 
 const now = () => (Math.floor(Date.now() / 1000) * 1000);
+// Tests that should be ignored when the CacheStorage instance is not our ponyfill
+const ignore = caches instanceof CacheStorage === false;
 
 Deno.test('CacheStorage', async (t) => {
     let cache: Cache | null = null;
@@ -22,15 +24,17 @@ Deno.test('CacheStorage', async (t) => {
             cache = await caches.open('v1');
             assertExists(cache);
         });
-        await t.step(
-            'should resolve the same Cache instance for that same cache name',
-            async () => {
+        await t.step({
+            name:
+                'should resolve the same Cache instance for that same cache name',
+            ignore, // This is not required by any standard
+            fn: async () => {
                 assertStrictEquals(
                     cache,
                     await caches.open('v1'),
                 );
             },
-        );
+        });
     });
 
     await t.step('has()', async (t) => {
@@ -58,14 +62,15 @@ Deno.test('CacheStorage', async (t) => {
                 assertFalse(await caches.delete('v1'));
             },
         );
-        await t.step(
-            'should remove all stored reponses',
-            async () => {
+        await t.step({
+            name: 'should remove all stored reponses',
+            ignore, // TODO: why does this not work in Deno?
+            fn: async () => {
                 {
                     const cache = await caches.open('v1');
                     const request = new Request('http://localhost/hello');
                     const response = new Response('Hello, world!');
-                    await cache.put(request, response);
+                    await cache.put(request, response.clone());
                     const cachedResponses = await cache.matchAll();
                     assert(cachedResponses.length > 0);
                     await caches.delete('v1');
@@ -75,7 +80,7 @@ Deno.test('CacheStorage', async (t) => {
                 assert(cachedResponses.length === 0);
                 await caches.delete('v1');
             },
-        );
+        });
     });
 
     await t.step('open()', async (t) => {
@@ -90,7 +95,7 @@ Deno.test('CacheStorage', async (t) => {
 
     await t.step({
         name: 'keys()',
-        ignore: caches instanceof CacheStorage === false,
+        ignore, // Not implemented in Deno
         fn: async (t) => {
             await t.step(
                 'should resolve to a list of cache names',
@@ -118,7 +123,7 @@ Deno.test('Cache', async (t) => {
                 const cache = await caches.open(cacheName);
                 const request = new Request('http://localhost/hello');
                 const response = new Response('Hello, world!');
-                await cache.put(request, response);
+                await cache.put(request, response.clone());
                 const cachedResponse = await cache.match(request);
                 assertEquals(await cachedResponse?.text(), 'Hello, world!');
                 await caches.delete(cacheName);
@@ -132,7 +137,7 @@ Deno.test('Cache', async (t) => {
                 const cache = await caches.open(cacheName);
                 const request = new URL('http://localhost/hello');
                 const response = new Response('Hello, world!');
-                await cache.put(request, response);
+                await cache.put(request, response.clone());
                 const cachedResponse = await cache.match(request);
                 assertEquals(await cachedResponse?.text(), 'Hello, world!');
                 await caches.delete(cacheName);
@@ -146,7 +151,7 @@ Deno.test('Cache', async (t) => {
                 const cache = await caches.open(cacheName);
                 const request = 'http://localhost/hello';
                 const response = new Response('Hello, world!');
-                await cache.put(request, response);
+                await cache.put(request, response.clone());
                 const cachedResponse = await cache.match(request);
                 assertEquals(await cachedResponse?.text(), 'Hello, world!');
                 await caches.delete(cacheName);
@@ -164,7 +169,7 @@ Deno.test('Cache', async (t) => {
                             `data:text/plain;base64,${btoa('ping')}`,
                         );
                         const response = new Response('Hello, world!');
-                        await cache.put(request, response);
+                        await cache.put(request, response.clone());
                     },
                     TypeError,
                     'protocol',
@@ -184,7 +189,7 @@ Deno.test('Cache', async (t) => {
                             method: 'POST',
                         });
                         const response = new Response('Hello, world!');
-                        await cache.put(request, response);
+                        await cache.put(request, response.clone());
                     },
                     TypeError,
                     'method',
@@ -204,7 +209,7 @@ Deno.test('Cache', async (t) => {
                         const response = new Response('Hello, world!', {
                             status: 206,
                         });
-                        await cache.put(request, response);
+                        await cache.put(request, response.clone());
                     },
                     TypeError,
                     '206',
@@ -224,7 +229,7 @@ Deno.test('Cache', async (t) => {
                         const response = new Response('Hello, world!', {
                             headers: { 'vary': ' * ' },
                         });
-                        await cache.put(request, response);
+                        await cache.put(request, response.clone());
                     },
                     TypeError,
                     '*',
@@ -266,8 +271,8 @@ Deno.test('Cache', async (t) => {
                 );
                 const response = new Response('Hello, world! #1');
                 const responseAlt = new Response('Hello, world! #2');
-                await cache.put(requestTitle, response);
-                await cache.put(requestContent, responseAlt);
+                await cache.put(requestTitle, response.clone());
+                await cache.put(requestContent, responseAlt.clone());
                 {
                     const cachedResponse = await cache.match(requestTitle);
                     assertEquals(
@@ -286,9 +291,11 @@ Deno.test('Cache', async (t) => {
             },
         );
 
-        await t.step(
-            'should expire the entry according to Expires response header',
-            async () => {
+        await t.step({
+            name:
+                'should expire the entry according to Expires response header',
+            ignore, // This is an adapter level decision
+            fn: async () => {
                 const cacheName = crypto.randomUUID();
                 const cache = await caches.open(cacheName);
                 const request = new Request('http://localhost/hello');
@@ -299,7 +306,7 @@ Deno.test('Cache', async (t) => {
                             .toUTCString(),
                     },
                 });
-                await cache.put(request, response);
+                await cache.put(request, response.clone());
                 assert(await cache.match(request));
                 await new Promise((res) => {
                     setTimeout(res, TTL * 1000 + 10);
@@ -307,11 +314,13 @@ Deno.test('Cache', async (t) => {
                 assertFalse(await cache.match(request));
                 await caches.delete(cacheName);
             },
-        );
+        });
 
-        await t.step(
-            'should expire the entry according to Cache-Control response header',
-            async () => {
+        await t.step({
+            name:
+                'should expire the entry according to Cache-Control response header',
+            ignore, // This is an adapter level decision
+            fn: async () => {
                 const cacheName = crypto.randomUUID();
                 const cache = await caches.open(cacheName);
                 const request = new Request('http://localhost/hello');
@@ -322,7 +331,7 @@ Deno.test('Cache', async (t) => {
                         'cache-control': `public, max-age=${TTL}`,
                     },
                 });
-                await cache.put(request, response);
+                await cache.put(request, response.clone());
                 assert(
                     await cache.match(request),
                     'Failed asserting existence before expiration',
@@ -336,11 +345,13 @@ Deno.test('Cache', async (t) => {
                 );
                 await caches.delete(cacheName);
             },
-        );
+        });
 
-        await t.step(
-            'should gracefully handle the absence of Date header (fallingback to now)',
-            async () => {
+        await t.step({
+            name:
+                'should gracefully handle the absence of Date header (fallingback to now)',
+            ignore, // This is an adapter level decision
+            fn: async () => {
                 const cacheName = crypto.randomUUID();
                 const cache = await caches.open(cacheName);
                 const request = new Request('http://localhost/hello');
@@ -350,7 +361,7 @@ Deno.test('Cache', async (t) => {
                         'cache-control': `public, max-age=${TTL}`,
                     },
                 });
-                await cache.put(request, response);
+                await cache.put(request, response.clone());
                 assert(await cache.match(request));
                 await new Promise((res) => {
                     setTimeout(res, TTL * 1000 + 10);
@@ -358,11 +369,13 @@ Deno.test('Cache', async (t) => {
                 assertFalse(await cache.match(request));
                 await caches.delete(cacheName);
             },
-        );
+        });
 
-        await t.step(
-            'should expire the entry according to Cache-Control response header taking into account the upstream Age',
-            async () => {
+        await t.step({
+            name:
+                'should expire the entry according to Cache-Control response header taking into account the upstream Age',
+            ignore, // This is an adapter level decision
+            fn: async () => {
                 const cacheName = crypto.randomUUID();
                 const cache = await caches.open(cacheName);
                 const request = new Request('http://localhost/hello');
@@ -373,7 +386,7 @@ Deno.test('Cache', async (t) => {
                         'cache-control': 'public, max-age=2',
                     },
                 });
-                await cache.put(request, response);
+                await cache.put(request, response.clone());
                 assert(await cache.match(request));
                 await new Promise((res) => {
                     setTimeout(res, 1000 + 10);
@@ -381,11 +394,11 @@ Deno.test('Cache', async (t) => {
                 assertFalse(await cache.match(request));
                 await caches.delete(cacheName);
             },
-        );
+        });
 
         await t.step({
             name: 'should keep non-expiring responses of the same request',
-            ignore: caches instanceof CacheStorage === false,
+            ignore, // This is an adapter level decision
             fn: async () => {
                 const cacheName = crypto.randomUUID();
                 const cache = await caches.open(cacheName);
@@ -398,11 +411,11 @@ Deno.test('Cache', async (t) => {
                                 .toUTCString(),
                         },
                     });
-                    await cache.put(request, response);
+                    await cache.put(request, response.clone());
                 }
                 {
                     const response = new Response('Hello, world!');
-                    await cache.put(request, response);
+                    await cache.put(request, response.clone());
                 }
                 assertEquals((await cache.matchAll(request)).length, 2);
                 await new Promise((res) => {
@@ -413,9 +426,10 @@ Deno.test('Cache', async (t) => {
             },
         });
 
-        await t.step(
-            'should not store if the response has already expired',
-            async () => {
+        await t.step({
+            name: 'should not store if the response has already expired',
+            ignore, // This is an adapter level decision
+            fn: async () => {
                 const cacheName = crypto.randomUUID();
                 const cache = await caches.open(cacheName);
                 const request = new Request('http://localhost/hello');
@@ -426,11 +440,11 @@ Deno.test('Cache', async (t) => {
                         'cache-control': 'public, max-age=1',
                     },
                 });
-                await cache.put(request, response);
+                await cache.put(request, response.clone());
                 assertFalse(await cache.match(request));
                 await caches.delete(cacheName);
             },
-        );
+        });
     });
 
     await t.step('match()', async (t) => {
@@ -442,11 +456,11 @@ Deno.test('Cache', async (t) => {
                 const request = new Request('http://localhost/hello');
                 {
                     const response = new Response('Hello, world! #1');
-                    await cache.put(request, response);
+                    await cache.put(request, response.clone());
                 }
                 {
                     const response = new Response('Hello, world! #2');
-                    await cache.put(request, response);
+                    await cache.put(request, response.clone());
                 }
                 const cachedResponse = await cache.match(request);
                 assertEquals(
@@ -484,8 +498,8 @@ Deno.test('Cache', async (t) => {
                     const cache = await caches.open(cacheName);
                     const request = new Request('http://localhost/hello');
                     const response = new Response('Hello, world!');
-                    await cache.put(request, response);
-                    await cache.put(request, response);
+                    await cache.put(request, response.clone());
+                    await cache.put(request, response.clone());
                     const cachedResponses = await cache.matchAll(request);
                     assertEquals(
                         await cachedResponses?.[0]?.text(),
@@ -506,8 +520,8 @@ Deno.test('Cache', async (t) => {
                     const cache = await caches.open(cacheName);
                     const request = new URL('http://localhost/hello');
                     const response = new Response('Hello, world!');
-                    await cache.put(request, response);
-                    await cache.put(request, response);
+                    await cache.put(request, response.clone());
+                    await cache.put(request, response.clone());
                     const cachedResponses = await cache.matchAll(request);
                     assertEquals(
                         await cachedResponses?.[0]?.text(),
@@ -528,8 +542,8 @@ Deno.test('Cache', async (t) => {
                     const cache = await caches.open(cacheName);
                     const request = 'http://localhost/hello';
                     const response = new Response('Hello, world!');
-                    await cache.put(request, response);
-                    await cache.put(request, response);
+                    await cache.put(request, response.clone());
+                    await cache.put(request, response.clone());
                     const cachedResponses = await cache.matchAll(request);
                     assertEquals(
                         await cachedResponses?.[0]?.text(),
@@ -556,7 +570,7 @@ Deno.test('Cache', async (t) => {
                                 .toUTCString(),
                         },
                     });
-                    await cache.put(request, response);
+                    await cache.put(request, response.clone());
                     await new Promise((res) => {
                         setTimeout(res, TTL * 1000 + 10);
                     });
@@ -572,7 +586,7 @@ Deno.test('Cache', async (t) => {
                     const cache = await caches.open(cacheName);
                     const request = new Request('http://localhost/hello');
                     const response = new Response('Hello, world!');
-                    await cache.put(request, response);
+                    await cache.put(request, response.clone());
                     const cachedResponse = await cache.match(request);
                     const age = Number(cachedResponse?.headers.get('age'));
                     assert(age >= 0);
@@ -589,7 +603,7 @@ Deno.test('Cache', async (t) => {
                     const response = new Response('Hello, world!', {
                         headers: { 'Age': '10' },
                     });
-                    await cache.put(request, response);
+                    await cache.put(request, response.clone());
                     await new Promise((res) => {
                         setTimeout(res, 100);
                     });
@@ -622,7 +636,7 @@ Deno.test('Cache', async (t) => {
                     {
                         const request = new Request('http://localhost/hello');
                         const response = new Response('Hello, world!');
-                        await cache.put(request, response);
+                        await cache.put(request, response.clone());
                     }
                     const request = new Request('http://localhost/hello', {
                         method: 'POST',
@@ -648,8 +662,8 @@ Deno.test('Cache', async (t) => {
                     );
                     const response = new Response('Hello, world! #1');
                     const responseAlt = new Response('Hello, world! #2');
-                    await cache.put(requestTitle, response);
-                    await cache.put(requestContent, responseAlt);
+                    await cache.put(requestTitle, response.clone());
+                    await cache.put(requestContent, responseAlt.clone());
                     const cachedResponsesTitle = await cache.matchAll(
                         requestTitle,
                     );
@@ -684,7 +698,7 @@ Deno.test('Cache', async (t) => {
                     {
                         const request = new Request('http://localhost/hello');
                         const response = new Response('Hello, world!');
-                        await cache.put(request, response);
+                        await cache.put(request, response.clone());
                     }
                     const request = new Request('http://localhost/hello?foo');
                     const cachedResponses = await cache.matchAll(request);
@@ -701,7 +715,7 @@ Deno.test('Cache', async (t) => {
                     {
                         const request = new Request('http://localhost/hello');
                         const response = new Response('Hello, world!');
-                        await cache.put(request, response);
+                        await cache.put(request, response.clone());
                     }
                     const request = new Request('http://localhost/hello?foo');
                     const cachedResponses = await cache.matchAll(request, {
@@ -724,7 +738,7 @@ Deno.test('Cache', async (t) => {
                         const response = new Response('Hello, world!', {
                             headers: { 'vary': 'accept-encoding' },
                         });
-                        await cache.put(request, response);
+                        await cache.put(request, response.clone());
                     }
                     const request = new Request('http://localhost/hello', {
                         headers: { 'accept-encoding': 'deflate' },
@@ -747,7 +761,7 @@ Deno.test('Cache', async (t) => {
                         const response = new Response('Hello, world!', {
                             headers: { 'vary': 'accept-encoding' },
                         });
-                        await cache.put(request, response);
+                        await cache.put(request, response.clone());
                     }
                     const request = new Request('http://localhost/hello', {
                         headers: { 'accept-encoding': 'deflate, gzip' },
@@ -770,7 +784,7 @@ Deno.test('Cache', async (t) => {
                         const response = new Response('Hello, world!', {
                             headers: { 'vary': 'accept-encoding,user-agent' },
                         });
-                        await cache.put(request, response);
+                        await cache.put(request, response.clone());
                     }
                     const request = new Request('http://localhost/hello', {
                         headers: { 'user-agent': 'firefox2' },
@@ -793,7 +807,7 @@ Deno.test('Cache', async (t) => {
                         const response = new Response('Hello, world!', {
                             headers: { 'vary': 'accept-encoding' },
                         });
-                        await cache.put(request, response);
+                        await cache.put(request, response.clone());
                     }
                     const request = new Request('http://localhost/hello', {
                         headers: { 'accept-encoding': 'deflate, gzip' },
@@ -814,12 +828,12 @@ Deno.test('Cache', async (t) => {
                     {
                         const request = new Request('http://localhost/hello');
                         const response = new Response('Hello, world!');
-                        await cache.put(request, response);
+                        await cache.put(request, response.clone());
                     }
                     {
                         const request = new Request('http://localhost/another');
                         const response = new Response('Hello, world!');
-                        await cache.put(request, response);
+                        await cache.put(request, response.clone());
                     }
                     const cachedResponses = await cache.matchAll();
                     assertEquals(cachedResponses.length, 2);
@@ -837,7 +851,7 @@ Deno.test('Cache', async (t) => {
                 const cache = await caches.open(cacheName);
                 const request = new Request('http://localhost/hello');
                 const response = new Response('Hello, world!');
-                await cache.put(request, response);
+                await cache.put(request, response.clone());
                 assert(await cache.delete(request));
                 await caches.delete(cacheName);
             },
@@ -850,7 +864,7 @@ Deno.test('Cache', async (t) => {
                 const cache = await caches.open(cacheName);
                 const request = new URL('http://localhost/hello');
                 const response = new Response('Hello, world!');
-                await cache.put(request, response);
+                await cache.put(request, response.clone());
                 assert(await cache.delete(request));
                 await caches.delete(cacheName);
             },
@@ -863,7 +877,7 @@ Deno.test('Cache', async (t) => {
                 const cache = await caches.open(cacheName);
                 const request = 'http://localhost/hello';
                 const response = new Response('Hello, world!');
-                await cache.put(request, response);
+                await cache.put(request, response.clone());
                 assert(await cache.delete(request));
                 await caches.delete(cacheName);
             },
@@ -885,7 +899,7 @@ Deno.test('Cache', async (t) => {
                 {
                     const request = new Request('http://localhost/hello');
                     const response = new Response('Hello, world!');
-                    await cache.put(request, response);
+                    await cache.put(request, response.clone());
                 }
                 const request = new Request('http://localhost/hello', {
                     method: 'POST',
@@ -895,15 +909,17 @@ Deno.test('Cache', async (t) => {
             },
         );
 
-        await t.step(
-            'should delete if the request method is other than GET with options.ignoreMethod',
-            async () => {
+        await t.step({
+            name:
+                'should delete if the request method is other than GET with options.ignoreMethod',
+            ignore, // Not implemented in Deno
+            fn: async () => {
                 const cacheName = crypto.randomUUID();
                 const cache = await caches.open(cacheName);
                 {
                     const request = new Request('http://localhost/hello');
                     const response = new Response('Hello, world!');
-                    await cache.put(request, response);
+                    await cache.put(request, response.clone());
                 }
                 const request = new Request('http://localhost/hello', {
                     method: 'POST',
@@ -911,7 +927,7 @@ Deno.test('Cache', async (t) => {
                 assert(await cache.delete(request, { ignoreMethod: true }));
                 await caches.delete(cacheName);
             },
-        );
+        });
 
         await t.step(
             'should not delete if the request search does not match',
@@ -921,7 +937,7 @@ Deno.test('Cache', async (t) => {
                 {
                     const request = new Request('http://localhost/hello');
                     const response = new Response('Hello, world!');
-                    await cache.put(request, response);
+                    await cache.put(request, response.clone());
                 }
                 const request = new Request('http://localhost/hello?foo');
                 assertFalse(await cache.delete(request));
@@ -929,25 +945,28 @@ Deno.test('Cache', async (t) => {
             },
         );
 
-        await t.step(
-            'should delete if the request search does not match with option.ignoreSearch',
-            async () => {
+        await t.step({
+            name:
+                'should delete if the request search does not match with option.ignoreSearch',
+            ignore, // Not implemented in Deno
+            fn: async () => {
                 const cacheName = crypto.randomUUID();
                 const cache = await caches.open(cacheName);
                 {
                     const request = new Request('http://localhost/hello');
                     const response = new Response('Hello, world!');
-                    await cache.put(request, response);
+                    await cache.put(request, response.clone());
                 }
                 const request = new Request('http://localhost/hello?foo');
                 assert(await cache.delete(request, { ignoreSearch: true }));
                 await caches.delete(cacheName);
             },
-        );
+        });
 
-        await t.step(
-            "should not delete if the request Vary values don't match",
-            async () => {
+        await t.step({
+            name: "should not delete if the request Vary values don't match",
+            ignore, // Not implemented in Deno
+            fn: async () => {
                 const cacheName = crypto.randomUUID();
                 const cache = await caches.open(cacheName);
                 {
@@ -957,7 +976,7 @@ Deno.test('Cache', async (t) => {
                     const response = new Response('Hello, world!', {
                         headers: { 'vary': 'accept-encoding' },
                     });
-                    await cache.put(request, response);
+                    await cache.put(request, response.clone());
                 }
                 const request = new Request('http://localhost/hello', {
                     headers: { 'accept-encoding': 'deflate, gzip' },
@@ -965,11 +984,13 @@ Deno.test('Cache', async (t) => {
                 assertFalse(await cache.delete(request));
                 await caches.delete(cacheName);
             },
-        );
+        });
 
-        await t.step(
-            "should delete if the request Vary values don't match, but normalize to the same value",
-            async () => {
+        await t.step({
+            name:
+                "should delete if the request Vary values don't match, but normalize to the same value",
+            ignore, // Not implemented in Deno
+            fn: async () => {
                 const cacheName = crypto.randomUUID();
                 const cache = await caches.open(cacheName);
                 {
@@ -979,7 +1000,7 @@ Deno.test('Cache', async (t) => {
                     const response = new Response('Hello, world!', {
                         headers: { 'vary': 'accept-encoding,user-agent' },
                     });
-                    await cache.put(request, response);
+                    await cache.put(request, response.clone());
                 }
                 const request = new Request('http://localhost/hello', {
                     headers: { 'user-agent': 'firefox2' },
@@ -987,11 +1008,13 @@ Deno.test('Cache', async (t) => {
                 assert(await cache.delete(request));
                 await caches.delete(cacheName);
             },
-        );
+        });
 
-        await t.step(
-            "should delete if the request Vary values don't match and options.ignoreVary",
-            async () => {
+        await t.step({
+            name:
+                "should delete if the request Vary values don't match and options.ignoreVary",
+            ignore, // Not implemented in Deno
+            fn: async () => {
                 const cacheName = crypto.randomUUID();
                 const cache = await caches.open(cacheName);
                 {
@@ -1001,7 +1024,7 @@ Deno.test('Cache', async (t) => {
                     const response = new Response('Hello, world!', {
                         headers: { 'vary': 'accept-encoding' },
                     });
-                    await cache.put(request, response);
+                    await cache.put(request, response.clone());
                 }
                 const request = new Request('http://localhost/hello', {
                     headers: { 'accept-encoding': 'deflate, gzip' },
@@ -1009,7 +1032,7 @@ Deno.test('Cache', async (t) => {
                 assert(await cache.delete(request, { ignoreVary: true }));
                 await caches.delete(cacheName);
             },
-        );
+        });
 
         await t.step({
             name: 'should keep non-matching cached responses',
@@ -1020,12 +1043,12 @@ Deno.test('Cache', async (t) => {
                 {
                     const request = new Request('http://localhost/hello?foo');
                     const response = new Response('Hello, world! #1');
-                    await cache.put(request, response);
+                    await cache.put(request, response.clone());
                 }
                 {
                     const request = new Request('http://localhost/hello');
                     const response = new Response('Hello, world! #2');
-                    await cache.put(request, response);
+                    await cache.put(request, response.clone());
                 }
                 const request = new Request('http://localhost/hello?foo');
                 assert(await cache.delete(request));

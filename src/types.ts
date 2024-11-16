@@ -3,7 +3,6 @@ import { type Options as PoolOptions } from 'generic-pool';
 
 export type PlainReq = {
     reqUrl: string;
-    reqBody?: Uint8Array;
     reqMethod: string;
     reqHeaders: Array<string[]>;
 };
@@ -87,7 +86,9 @@ export interface CachePersistenceMemoryOptions
     extends CachePersistenceBaseOptions {}
 
 export interface CachePersistenceRedisOptions
-    extends RedisConnectOptions, PoolOptions, CachePersistenceBaseOptions {}
+    extends RedisConnectOptions, PoolOptions, CachePersistenceBaseOptions {
+    keysLimit?: number;
+}
 
 export interface DenoKvOpenOptions {
     path?: string | undefined;

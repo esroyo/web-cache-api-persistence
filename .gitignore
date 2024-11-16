@@ -135,3 +135,4 @@ dist
 #custom
 main.ts
 tmp
+redis-up.ts

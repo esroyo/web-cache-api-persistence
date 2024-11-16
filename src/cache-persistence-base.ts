@@ -126,7 +126,6 @@ export abstract class CachePersistenceBase {
     }
 
     protected _plainToRequest({
-        reqBody,
         reqHeaders,
         reqMethod,
         reqUrl,
@@ -134,7 +133,6 @@ export abstract class CachePersistenceBase {
         return new Request(
             reqUrl,
             {
-                ...(reqBody && { body: reqBody }),
                 headers: reqHeaders,
                 method: reqMethod,
             },
@@ -166,8 +164,7 @@ export abstract class CachePersistenceBase {
         return cachedResponse;
     }
 
-    protected async _responseToPlain(res: Response): Promise<PlainRes> {
-        const response = res.clone();
+    protected async _responseToPlain(response: Response): Promise<PlainRes> {
         const resBody = new Uint8Array(await response.arrayBuffer());
         return {
             ...(resBody.length ? { resBody } : undefined),
@@ -177,13 +174,10 @@ export abstract class CachePersistenceBase {
         };
     }
 
-    protected async _requestToPlain(req: Request): Promise<PlainReq> {
-        const request = req.clone();
+    protected async _requestToPlain(request: Request): Promise<PlainReq> {
         const reqUrl = new URL(request.url);
         reqUrl.hash = '';
-        const reqBody = new Uint8Array(await request.arrayBuffer());
         return {
-            ...(reqBody.length ? { reqBody } : undefined),
             reqHeaders: [...request.headers.entries()],
             reqMethod: request.method,
             reqUrl: reqUrl.toString(),
@@ -227,8 +221,6 @@ export abstract class CachePersistenceBase {
         }
         return this._encoder.encode(JSON.stringify({
             ...plainReqRes,
-            ...(plainReqRes.reqBody &&
-                { reqBody: this._decoder.decode(plainReqRes.reqBody) }),
             ...(plainReqRes.resBody &&
                 { resBody: this._decoder.decode(plainReqRes.resBody) }),
         }));
@@ -243,11 +235,6 @@ export abstract class CachePersistenceBase {
         const plainReqRes = JSON.parse(
             this._decoder.decode(serializedPlainReqRes),
         ) as PlainReqRes;
-        if (plainReqRes.reqBody) {
-            plainReqRes.reqBody = this._encoder.encode(
-                plainReqRes.reqBody as unknown as string,
-            );
-        }
         if (plainReqRes.resBody) {
             plainReqRes.resBody = this._encoder.encode(
                 plainReqRes.resBody as unknown as string,

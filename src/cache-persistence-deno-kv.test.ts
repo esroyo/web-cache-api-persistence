@@ -1,4 +1,4 @@
-import { CachePersistenceDenoKv } from './cache-persistence-denokv.ts';
+import { CachePersistenceDenoKv } from './cache-persistence-deno-kv.ts';
 import { CacheStorage } from './cache-storage.ts';
 
 Object.defineProperty(globalThis, 'caches', {
@@ -11,4 +11,4 @@ Object.defineProperty(globalThis, 'caches', {
     }, (name, value) => (name === 'user-agent' ? 'firefox' : value)),
 });
 
-await import('./cache-storage.base-test.ts');
+await import('./cache-storage.test.ts');

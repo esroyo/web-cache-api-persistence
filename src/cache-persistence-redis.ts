@@ -22,6 +22,8 @@ export class CachePersistenceRedis extends CachePersistenceBase
             max: 4,
             min: 2,
             testOnBorrow: true,
+            // Custom options
+            keysLimit: 4,
         };
     }
 
@@ -90,6 +92,7 @@ export class CachePersistenceRedis extends CachePersistenceBase
             request,
             response,
         );
+
         return await this._dbDel(persistenceKey);
     }
 
@@ -142,6 +145,7 @@ export class CachePersistenceRedis extends CachePersistenceBase
     }
 
     protected async _dbScan(pattern: string[]): Promise<string[]> {
+        const indexes = [];
         const found = [];
         let cursor = '0';
         const persistenceKey = this._joinKey(pattern);
@@ -149,14 +153,18 @@ export class CachePersistenceRedis extends CachePersistenceBase
         do {
             const reply = await redis.scan(+cursor, {
                 pattern: persistenceKey,
-                type: 'string',
+                type: 'zset',
                 count: 100_000,
             });
             cursor = reply[0];
-            found.push(...reply[1]);
+            indexes.push(...reply[1]);
         } while (cursor !== '0');
         await this._dbPool.release(redis);
-        found.sort().reverse();
+        for (const index of indexes) {
+            for await (const key of this._dbKeys(this._splitKey(index))) {
+                found.push(key);
+            }
+        }
         return found;
     }
 
@@ -164,7 +172,7 @@ export class CachePersistenceRedis extends CachePersistenceBase
         key: string[],
     ): AsyncGenerator<string, void, unknown> {
         const indexKey = this._indexKey(key);
-        const count = 1;
+        const count = Math.max(this._options.keysLimit ?? 0, 1);
         let offset = 0;
         let result: string[] = [];
         do {
@@ -199,6 +207,7 @@ export class CachePersistenceRedis extends CachePersistenceBase
         }) as Uint8Array;
         await this._dbPool.release(redis);
         if (!result) {
+            await this._dbDel(key);
             return null;
         }
         return this._parse(result) as PlainReqRes;

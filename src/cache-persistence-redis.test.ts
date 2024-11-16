@@ -4,7 +4,7 @@ import { nextPort, startRedis, stopRedis } from './test-utils.ts';
 
 const port = nextPort();
 const server = await startRedis({ port });
-//const port = 6379;
+// const port = 6379;
 
 Object.defineProperty(globalThis, 'caches', {
     value: new CacheStorage({
@@ -13,6 +13,6 @@ Object.defineProperty(globalThis, 'caches', {
     }, (name, value) => (name === 'user-agent' ? 'firefox' : value)),
 });
 
-await import('./cache-storage.base-test.ts');
+await import('./cache-storage.test.ts');
 
 // stopRedis(server);

@@ -141,16 +141,14 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
     protected async _dbScan(key: string[]): Promise<string[][]> {
         const kv = await this._dbPool.acquire();
         const iter = kv.list<string>({ prefix: key });
-        const found = new Set<string>();
+        const found = [];
         for await (const res of iter) {
-            if (res.key.length >= 4) {
-                found.add(this._joinKey(res.key.slice(0, 4) as string[]));
+            if (res.key.length === 3) { // This is an index (a Set)
+                found.push(...res.value);
             }
         }
         await this._dbPool.release(kv);
         return [...found]
-            .sort()
-            .reverse()
             .map((key) => this._splitKey(key));
     }
 
@@ -171,9 +169,10 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
 
     protected async _dbGet(key: string[]): Promise<PlainReqRes | null> {
         const kv = await this._dbPool.acquire();
-        const result = await kvToolboxGet(kv, key);
+        const result = await kvToolboxGet(kv, key, { consistency: 'eventual' });
         await this._dbPool.release(kv);
         if (!result.value) {
+            await this._dbDel(key);
             return null;
         }
         return this._parse(result.value as Uint8Array) as PlainReqRes;

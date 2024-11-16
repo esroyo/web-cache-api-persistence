@@ -8,4 +8,4 @@ Object.defineProperty(globalThis, 'caches', {
     ),
 });
 
-await import('./cache-storage.base-test.ts');
+await import('./cache-storage.test.ts');

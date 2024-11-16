@@ -1,4 +1,4 @@
-import { CachePersistenceDenoKv } from './cache-persistence-denokv.ts';
+import { CachePersistenceDenoKv } from './cache-persistence-deno-kv.ts';
 import { CachePersistenceMemory } from './cache-persistence-memory.ts';
 import { CachePersistenceRedis } from './cache-persistence-redis.ts';
 import { CacheStorage } from './cache-storage.ts';
@@ -25,20 +25,6 @@ const cachesRedis = new CacheStorage({
 });
 const cacheRedis = await cachesRedis.open('default');
 
-// const cachesRedis = new CacheStorage({
-//     create: async () =>
-//         new CachePersistenceRedis({
-//             port: 6379,
-//             hostname: 'positive-stingray-30817.upstash.io',
-//             username: 'default',
-//             password: 'AXhhAAIjcDEzMmNhZGMwYmY1NmQ0NzgzOGU5ZTFjZTE1NWU1YTRkN3AxMA',
-//             tls: true,
-//             // max: 1,
-//             // min: 1,
-//         }),
-// });
-// const cacheRedis = await cachesRedis.open('default');
-
 const cachesKv = new CacheStorage({
     create: async () =>
         new CachePersistenceDenoKv({
@@ -55,17 +41,49 @@ const cacheNative = await caches.open('default');
 
 // ---------------------------------
 
+async function fillCache(
+    cache: Cache,
+    num = 100,
+): Promise<() => Promise<void>> {
+    const promises: Array<Promise<void>> = [];
+    const requests: Array<Request> = [];
+    for (let i = 0; i < num; i += 1) {
+        const request = generateRandomRequest();
+        const response = generateRandomResponse();
+        promises.push(cache.put(request, response));
+        requests.push(request);
+    }
+    await Promise.allSettled(promises);
+    return async () => {
+        for (const req of requests) {
+            await cache.delete(req, {
+                ignoreMethod: true,
+                ignoreSearch: true,
+                ignoreVary: true,
+            });
+        }
+    };
+}
+
+// ---------------------------------
+
 Deno.bench(
     'CachePersistenceNative',
     { group: 'put(req, res)' },
     async (b) => {
+        const cache = cacheNative;
         const request = generateRandomRequest();
         const response = generateRandomResponse();
         b.start();
         try {
-            await cacheNative.put(request, response);
+            await cache.put(request, response);
         } catch {}
         b.end();
+        await cache.delete(request, {
+            ignoreMethod: true,
+            ignoreSearch: true,
+            ignoreVary: true,
+        });
     },
 );
 
@@ -73,34 +91,52 @@ Deno.bench(
     'CachePersistenceMemory',
     { group: 'put(req, res)', baseline: true },
     async (b) => {
+        const cache = cacheMemory;
         const request = generateRandomRequest();
         const response = generateRandomResponse();
         b.start();
         try {
-            await cacheMemory.put(request, response);
+            await cache.put(request, response);
         } catch {}
         b.end();
+        await cache.delete(request, {
+            ignoreMethod: true,
+            ignoreSearch: true,
+            ignoreVary: true,
+        });
     },
 );
 
 Deno.bench('CachePersistenceRedis', { group: 'put(req, res)' }, async (b) => {
+    const cache = cacheRedis;
     const request = generateRandomRequest();
     const response = generateRandomResponse();
     b.start();
     try {
-        await cacheRedis.put(request, response);
+        await cache.put(request, response);
     } catch {}
     b.end();
+    await cache.delete(request, {
+        ignoreMethod: true,
+        ignoreSearch: true,
+        ignoreVary: true,
+    });
 });
 
 Deno.bench('CachePersistenceKv', { group: 'put(req, res)' }, async (b) => {
+    const cache = cacheKv;
     const request = generateRandomRequest();
     const response = generateRandomResponse();
     b.start();
     try {
-        await cacheKv.put(request, response);
+        await cache.put(request, response);
     } catch {}
     b.end();
+    await cache.delete(request, {
+        ignoreMethod: true,
+        ignoreSearch: true,
+        ignoreVary: true,
+    });
 });
 
 // ---------------------------------
@@ -109,10 +145,13 @@ Deno.bench(
     'CachePersistenceNative',
     { group: 'match(req)' },
     async (b) => {
+        const cache = cacheNative;
+        const clean = await fillCache(cache);
         const request = generateRandomRequest();
         b.start();
-        await cacheNative.match(request);
+        await cache.match(request);
         b.end();
+        await clean();
     },
 );
 
@@ -120,38 +159,50 @@ Deno.bench(
     'CachePersistenceMemory',
     { group: 'match(req)', baseline: true },
     async (b) => {
+        const cache = cacheMemory;
+        const clean = await fillCache(cache);
         const request = generateRandomRequest();
         b.start();
-        await cacheMemory.match(request);
+        await cache.match(request);
         b.end();
+        await clean();
     },
 );
 
 Deno.bench('CachePersistenceRedis', { group: 'match(req)' }, async (b) => {
+    const cache = cacheRedis;
+    const clean = await fillCache(cache);
     const request = generateRandomRequest();
     b.start();
-    await cacheRedis.match(request);
+    await cache.match(request);
     b.end();
+    await clean();
 });
 
 Deno.bench('CachePersistenceKv', { group: 'match(req)' }, async (b) => {
+    const cache = cacheKv;
+    const clean = await fillCache(cache);
     const request = generateRandomRequest();
     b.start();
-    await cacheKv.match(request);
+    await cache.match(request);
     b.end();
+    await clean();
 });
 
 // ---------------------------------
 
 /*
 Deno.bench(
-    'CachePersistenceMemory',
-    { group: 'matchAll(req)', baseline: true },
+    'CachePersistenceNative',
+    { group: 'matchAll(req)' },
     async (b) => {
+        const cache = cacheNative;
+        const clean = await fillCache(cache);
         const request = generateRandomRequest();
         b.start();
-        await cacheNative.matchAll(request);
+        await cache.matchAll(request);
         b.end();
+        await clean();
     },
 );
 */
@@ -160,34 +211,48 @@ Deno.bench(
     'CachePersistenceMemory',
     { group: 'matchAll(req)', baseline: true },
     async (b) => {
+        const cache = cacheMemory;
+        const clean = await fillCache(cache);
         const request = generateRandomRequest();
         b.start();
-        await cacheMemory.matchAll(request);
+        await cache.matchAll(request);
         b.end();
+        await clean();
     },
 );
 
 Deno.bench('CachePersistenceRedis', { group: 'matchAll(req)' }, async (b) => {
+    const cache = cacheRedis;
+    const clean = await fillCache(cache);
     const request = generateRandomRequest();
     b.start();
-    await cacheRedis.matchAll(request);
+    await cache.matchAll(request);
     b.end();
+    await clean();
 });
 
 Deno.bench('CachePersistenceKv', { group: 'matchAll(req)' }, async (b) => {
+    const cache = cacheKv;
+    const clean = await fillCache(cache);
     const request = generateRandomRequest();
     b.start();
-    await cacheKv.matchAll(request);
+    await cache.matchAll(request);
     b.end();
+    await clean();
 });
 
 // ---------------------------------
 
 // Deno.bench(
 //     'CachePersistenceNative',
-//     { group: 'matchAll()', baseline: true },
+//     { group: 'matchAll()' },
 //     async (b) => {
-//         await cacheNative.matchAll();
+//         const cache = cacheNative;
+//         const clean = await fillCache(cache);
+//         b.start();
+//         await cache.matchAll();
+//         b.end();
+//         await clean();
 //     },
 // );
 
@@ -195,16 +260,31 @@ Deno.bench(
     'CachePersistenceMemory',
     { group: 'matchAll()', baseline: true },
     async (b) => {
-        await cacheMemory.matchAll();
+        const cache = cacheMemory;
+        const clean = await fillCache(cache);
+        b.start();
+        await cache.matchAll();
+        b.end();
+        await clean();
     },
 );
 
 Deno.bench('CachePersistenceRedis', { group: 'matchAll()' }, async (b) => {
-    await cacheRedis.matchAll();
+    const cache = cacheRedis;
+    const clean = await fillCache(cache);
+    b.start();
+    await cache.matchAll();
+    b.end();
+    await clean();
 });
 
 Deno.bench('CachePersistenceKv', { group: 'matchAll()' }, async (b) => {
-    await cacheKv.matchAll();
+    const cache = cacheKv;
+    const clean = await fillCache(cache);
+    b.start();
+    await cache.matchAll();
+    b.end();
+    await clean();
 });
 
 // ---------------------------------
@@ -213,10 +293,17 @@ Deno.bench(
     'CachePersistenceNative',
     { group: 'delete(req)' },
     async (b) => {
+        const cache = cacheNative;
+        const clean = await fillCache(cache);
         const request = generateRandomRequest();
         b.start();
-        await cacheNative.delete(request);
+        await cache.delete(request, {
+            ignoreMethod: true,
+            ignoreSearch: true,
+            ignoreVary: true,
+        });
         b.end();
+        await clean();
     },
 );
 
@@ -224,25 +311,46 @@ Deno.bench(
     'CachePersistenceMemory',
     { group: 'delete(req)', baseline: true },
     async (b) => {
+        const cache = cacheMemory;
+        const clean = await fillCache(cache);
         const request = generateRandomRequest();
         b.start();
-        await cacheMemory.delete(request);
+        await cache.delete(request, {
+            ignoreMethod: true,
+            ignoreSearch: true,
+            ignoreVary: true,
+        });
         b.end();
+        await clean();
     },
 );
 
 Deno.bench('CachePersistenceRedis', { group: 'delete(req)' }, async (b) => {
+    const cache = cacheRedis;
+    const clean = await fillCache(cache);
     const request = generateRandomRequest();
     b.start();
-    await cacheRedis.delete(request);
+    await cache.delete(request, {
+        ignoreMethod: true,
+        ignoreSearch: true,
+        ignoreVary: true,
+    });
     b.end();
+    await clean();
 });
 
 Deno.bench('CachePersistenceKv', { group: 'delete(req)' }, async (b) => {
+    const cache = cacheKv;
+    const clean = await fillCache(cache);
     const request = generateRandomRequest();
     b.start();
-    await cacheKv.delete(request);
+    await cache.delete(request, {
+        ignoreMethod: true,
+        ignoreSearch: true,
+        ignoreVary: true,
+    });
     b.end();
+    await clean();
 });
 
 // ---------------------------------
