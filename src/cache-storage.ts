@@ -10,9 +10,15 @@ import * as webidl from './webidl.ts';
 import { Cache } from './cache.ts';
 import { CachePersistenceMemory } from './cache-persistence-memory.ts';
 
+/**
+ * The storage for Cache objects.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage)
+ */
 export class CacheStorage implements CacheStorageLike {
-    protected _cache: Record<string, [CacheLike, CachePersistenceLike]> = Object
-        .create(null);
+    protected _caches: Record<string, [CacheLike, CachePersistenceLike]> =
+        Object
+            .create(null);
     protected _persistenceFactory: CachePersistenceFactory;
 
     constructor(
@@ -32,29 +38,32 @@ export class CacheStorage implements CacheStorageLike {
         }
     }
 
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/open) */
     async open(cacheName: string): Promise<CacheLike> {
         const prefix = "Failed to execute 'open' on 'CacheStorage'";
         webidl.requiredArguments(arguments.length, 1, prefix);
-        const existingCache = this._cache[cacheName];
+        const existingCache = this._caches[cacheName];
         if (existingCache) {
             return existingCache[0];
         }
         const persistence = await this._persistenceFactory.create(cacheName);
         const cache = new Cache(cacheName, persistence, this._normalizeHeader);
-        this._cache[cacheName] = [cache, persistence];
+        this._caches[cacheName] = [cache, persistence];
         return cache;
     }
 
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/has) */
     async has(cacheName: string): Promise<boolean> {
         const prefix = "Failed to execute 'has' on 'CacheStorage'";
         webidl.requiredArguments(arguments.length, 1, prefix);
-        return cacheName in this._cache;
+        return cacheName in this._caches;
     }
 
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/delete) */
     async delete(cacheName: string): Promise<boolean> {
         const prefix = "Failed to execute 'delete' on 'CacheStorage'";
         webidl.requiredArguments(arguments.length, 1, prefix);
-        const existingCache = this._cache[cacheName];
+        const existingCache = this._caches[cacheName];
         if (!existingCache) {
             return false;
         }
@@ -65,12 +74,27 @@ export class CacheStorage implements CacheStorageLike {
         ) {
             await existingCache[1].delete(cacheName, request, response);
         }
-        await existingCache[0][Symbol.asyncDispose]?.();
-        delete this._cache[cacheName];
+        await existingCache[1][Symbol.asyncDispose]?.(cacheName);
+        delete this._caches[cacheName];
         return true;
     }
 
-    keys(): string[] {
-        return Object.keys(this._cache);
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/keys) */
+    async keys(): Promise<string[]> {
+        return Object.keys(this._caches);
+    }
+
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/match) */
+    async match(
+        request: RequestInfo | URL,
+        options?: CacheQueryOptions,
+    ): Promise<Response | undefined> {
+        for (const cacheName of await this.keys()) {
+            const cache = await this.open(cacheName);
+            const response = await cache.match(request, options);
+            if (response) {
+                return response;
+            }
+        }
     }
 }

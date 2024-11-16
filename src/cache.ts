@@ -12,11 +12,11 @@ export class Cache implements CacheLike {
         protected _normalizeHeader: CacheHeaderNormalizer,
     ) {}
 
-    async [Symbol.asyncDispose]() {
-        await this._persistence[Symbol.asyncDispose]?.(this._cacheName);
-    }
-
-    /** See https://w3c.github.io/ServiceWorker/#dom-cache-put */
+    /**
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/put)
+     *
+     * [W3C Specification](https://w3c.github.io/ServiceWorker/#dom-cache-put)
+     */
     async put(
         requestOrUrl: RequestInfo | URL,
         response: Response,
@@ -65,7 +65,11 @@ export class Cache implements CacheLike {
         await this._persistence.put(this._cacheName, request, response);
     }
 
-    /** See https://w3c.github.io/ServiceWorker/#cache-delete */
+    /**
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/delete)
+     *
+     * [W3C Specification](https://w3c.github.io/ServiceWorker/#cache-delete)
+     */
     async delete(
         requestOrUrl: RequestInfo | URL,
         options?: CacheQueryOptions,
@@ -114,35 +118,59 @@ export class Cache implements CacheLike {
         return hasDeleted;
     }
 
-    /** See https://w3c.github.io/ServiceWorker/#cache-match */
+    /**
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/match)
+     *
+     * [W3C Specification](https://w3c.github.io/ServiceWorker/#cache-match)
+     */
     async match(
         request: RequestInfo | URL,
         options?: CacheQueryOptions,
     ): Promise<Response | undefined> {
         const prefix = "Failed to execute 'match' on 'Cache'";
         webidl.requiredArguments(arguments.length, 1, prefix);
-        const p = await this._matchMax(1, request, options);
+        const p = await this._matchMax(1, false, request, options);
         if (p.length > 0) {
             return p[0];
         }
     }
 
-    /** See https://w3c.github.io/ServiceWorker/#cache-matchall
+    /**
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/matchAll)
      *
-     * The function will return an array of responses.
+     * [W3C Specification](https://w3c.github.io/ServiceWorker/#cache-matchall)
      */
     async matchAll(
         requestOrUrl?: RequestInfo | URL,
         options?: CacheQueryOptions,
     ): Promise<ReadonlyArray<Response>> {
-        return this._matchMax(Infinity, requestOrUrl, options);
+        const responses = await this._matchMax(
+            Infinity,
+            false,
+            requestOrUrl,
+            options,
+        );
+        return Object.freeze(responses);
     }
 
     protected async _matchMax(
         max: number,
+        keys: false,
         requestOrUrl?: RequestInfo | URL,
         options?: CacheQueryOptions,
-    ): Promise<ReadonlyArray<Response>> {
+    ): Promise<Array<Response>>;
+    protected async _matchMax(
+        max: number,
+        keys: true,
+        requestOrUrl?: RequestInfo | URL,
+        options?: CacheQueryOptions,
+    ): Promise<Array<Request>>;
+    protected async _matchMax(
+        max: number,
+        keys: boolean,
+        requestOrUrl?: RequestInfo | URL,
+        options?: CacheQueryOptions,
+    ): Promise<Array<Response | Request>> {
         // Step 1.
         let request: Request | null = null;
         // Step 2.
@@ -156,22 +184,22 @@ export class Cache implements CacheLike {
         }
 
         // Step 5.
-        const responses: Response[] = [];
+        const responsesOrRequests: Array<Response | Request> = [];
         // Step 5.2
         if (!request) {
             // Step 5.3
             // Note: we have to return all responses in the cache when
             // the request is null.
             for await (
-                const [_cachedRequest, cachedResponse] of this._persistence
+                const [cachedRequest, cachedResponse] of this._persistence
                     [Symbol.asyncIterator](this._cacheName)
             ) {
-                responses.push(cachedResponse);
-                if (responses.length >= max) {
+                responsesOrRequests.push(keys ? cachedRequest : cachedResponse);
+                if (responsesOrRequests.length >= max) {
                     break;
                 }
             }
-            return responses;
+            return responsesOrRequests;
         }
 
         for await (
@@ -188,16 +216,14 @@ export class Cache implements CacheLike {
                     options,
                 )
             ) {
-                responses.push(cachedResponse);
-                if (responses.length >= max) {
+                responsesOrRequests.push(keys ? cachedRequest : cachedResponse);
+                if (responsesOrRequests.length >= max) {
                     break;
                 }
             }
         }
 
-        // Step 5.4-5.5: don't apply in this context.
-
-        return Object.freeze(responses);
+        return responsesOrRequests;
     }
 
     /** See https://w3c.github.io/ServiceWorker/#request-matches-cached-item */
@@ -255,5 +281,35 @@ export class Cache implements CacheLike {
         }
 
         return true;
+    }
+
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/add) */
+    async add(url: RequestInfo | URL): Promise<undefined> {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new TypeError('bad response status');
+        }
+        await this.put(url, response);
+    }
+
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/addAll) */
+    async addAll(urls: Array<RequestInfo | URL>): Promise<undefined> {
+        for (const url of urls) {
+            await this.add(url);
+        }
+    }
+
+    /**[MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/keys) */
+    async keys(
+        requestOrUrl?: RequestInfo | URL,
+        options?: CacheQueryOptions,
+    ): Promise<ReadonlyArray<Request>> {
+        const requests = await this._matchMax(
+            Infinity,
+            true,
+            requestOrUrl,
+            options,
+        );
+        return Object.freeze(requests.reverse());
     }
 }

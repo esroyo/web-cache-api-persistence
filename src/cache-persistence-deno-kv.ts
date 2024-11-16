@@ -144,12 +144,14 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
         const found = [];
         for await (const res of iter) {
             if (res.key.length === 3) { // This is an index (a Set)
-                found.push(...res.value);
+                for (const key of res.value) {
+                    found.push(this._splitKey(key));
+                }
             }
         }
         await this._dbPool.release(client);
-        return [...found]
-            .map((key) => this._splitKey(key));
+        found.sort((a, b) => (a[3] > b[3] ? -1 : 1));
+        return found;
     }
 
     protected async _dbKeys(key: string[]): Promise<string[][]> {

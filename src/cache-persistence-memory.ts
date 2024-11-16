@@ -128,8 +128,16 @@ export class CachePersistenceMemory extends CachePersistenceBase
 
     protected async _dbScan(key: string[]): Promise<string[]> {
         const persistenceKey = this._joinKey(key);
-        return Object.keys(this._storage)
-            .filter((key) => key.startsWith(persistenceKey));
+        const found = [];
+        for (const index in this._indexes) {
+            if (index.startsWith(persistenceKey)) {
+                for (const key of this._indexes[index]) {
+                    found.push(this._splitKey(key));
+                }
+            }
+        }
+        found.sort((a, b) => (a[3] > b[3] ? -1 : 1));
+        return found.map((key) => this._joinKey(key));
     }
 
     protected async _dbKeys(key: string[]): Promise<string[]> {

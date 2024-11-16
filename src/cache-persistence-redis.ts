@@ -167,18 +167,22 @@ export class CachePersistenceRedis extends CachePersistenceBase
         } while (cursor !== '0');
         await this._dbPool.release(client);
         for (const index of indexes) {
-            for await (const key of this._dbKeys(this._splitKey(index))) {
-                found.push(key);
+            for await (
+                const key of this._dbKeys(this._splitKey(index), 100_000)
+            ) {
+                found.push(this._splitKey(key));
             }
         }
-        return found;
+        found.sort((a, b) => (a[3] > b[3] ? -1 : 1));
+        return found.map((key) => this._joinKey(key));
     }
 
     protected async *_dbKeys(
         key: string[],
+        keysLimit = this._options.keysLimit,
     ): AsyncGenerator<string, void, unknown> {
         const indexKey = this._indexKey(key);
-        const count = Math.max(this._options.keysLimit ?? 0, 1);
+        const count = Math.max(keysLimit ?? 0, 1);
         let offset = 0;
         let result: string[] = [];
         do {

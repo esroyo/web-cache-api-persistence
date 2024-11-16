@@ -1,3 +1,4 @@
+import type { SimplifyDeep } from 'npm:type-fest';
 import { type RedisConnectOptions } from 'redis';
 import { type Options as PoolOptions } from 'generic-pool';
 
@@ -55,17 +56,44 @@ export interface CachePersistenceFactory {
     create(cacheName: string): Promise<CachePersistenceLike>;
 }
 
+/**
+ * Provides a storage mechanism for Request / Response object pairs that are cached, for example as part of the ServiceWorker life cycle. Note that the Cache interface is exposed to windowed scopes as well as workers. You don't have to use it in conjunction with service workers, even though it is defined in the service worker spec.
+ * Available only in secure contexts.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache)
+ */
 export interface CacheLike extends Cache {
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/add) */
+    add(request: RequestInfo | URL): Promise<undefined>;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/addAll) */
+    addAll(requests: Array<RequestInfo | URL>): Promise<undefined>;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/keys) */
+    keys(
+        request?: RequestInfo | URL,
+        options?: CacheQueryOptions,
+    ): Promise<ReadonlyArray<Request>>;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/matchAll) */
     matchAll(
         request?: RequestInfo | URL,
         options?: CacheQueryOptions,
-    ): Promise<readonly Response[]>;
-    [Symbol.asyncDispose](): Promise<void>;
+    ): Promise<ReadonlyArray<Response>>;
 }
 
+/**
+ * The storage for Cache objects.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage)
+ */
 export interface CacheStorageLike extends CacheStorage {
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/open) */
     open(cacheName: string): Promise<CacheLike>;
-    keys(): string[];
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/keys) */
+    keys(): Promise<string[]>;
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/match) */
+    match(
+        request: RequestInfo | URL,
+        options?: CacheQueryOptions,
+    ): Promise<Response | undefined>;
 }
 
 export interface CacheStorageConstructable {
@@ -96,3 +124,6 @@ export interface DenoKvOpenOptions {
 
 export interface CachePersistenceDenoKvOptions
     extends DenoKvOpenOptions, PoolOptions, CachePersistenceBaseOptions {}
+
+// type Foo = SimplifyDeep<CacheLike>;
+// type Bar = SimplifyDeep<CacheStorageLike>;
