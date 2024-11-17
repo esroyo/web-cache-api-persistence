@@ -12,6 +12,10 @@ export class Cache implements CacheLike {
         protected _normalizeHeader: CacheHeaderNormalizer,
     ) {}
 
+    async [Symbol.asyncDispose]() {
+        await this._persistence[Symbol.asyncDispose]?.(this._cacheName);
+    }
+
     /**
      * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/put)
      *
