@@ -1,6 +1,8 @@
 import { create3, type Hasher } from '@jabr/xxhash64';
 import { monotonicUlid } from '@std/ulid';
 import msgpack from 'msgpack-lite';
+import { type Codec } from 'npm:@types/msgpack-lite@0.1.11';
+
 import type {
     CachePersistenceBaseOptions,
     PlainReq,
@@ -16,7 +18,7 @@ export abstract class CachePersistenceBase {
     protected _encoder: TextEncoder = new TextEncoder();
     protected _counter: Record<number, number> = Object.create(null);
     protected _hasherPromise: Promise<Hasher> = create3();
-    protected _msgpackCodec = msgpack.createCodec({
+    protected _msgpackCodec: Codec = msgpack.createCodec({
         uint8array: true,
         preset: true,
     });
