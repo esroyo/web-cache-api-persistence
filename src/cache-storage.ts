@@ -1,7 +1,7 @@
 import type {
-    CacheConstructable,
     CacheHeaderNormalizer,
     CacheLike,
+    CacheLikeConstructable,
     CachePersistenceConstructable,
     CachePersistenceFactory,
     CachePersistenceLike,
@@ -36,7 +36,7 @@ export class CacheStorage implements CacheStorageLike {
                     };
                 })(),
         protected _headerNormalizer: CacheHeaderNormalizer = (_, v) => v,
-        protected _CacheCtor: CacheConstructable = Cache,
+        protected _CacheCtor: CacheLikeConstructable = Cache,
     ) {
         if (typeof persistenceFactoryOrCtor === 'function') {
             // Normalize to a factory

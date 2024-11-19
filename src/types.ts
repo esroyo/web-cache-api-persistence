@@ -1,4 +1,3 @@
-import type { SimplifyDeep } from 'npm:type-fest';
 import { type RedisConnectOptions } from 'redis';
 import { type Options as PoolOptions } from 'generic-pool';
 
@@ -6,8 +5,15 @@ import { type Options as PoolOptions } from 'generic-pool';
  * Provides a persistence mechanism to be used by the Cache object.
  */
 export interface CachePersistenceLike {
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/keys) */
+    /**
+     * The keys() method of the CachePersistence interface fulfills a similar role
+     * to the keys() method of the CacheStorage object. The persistence layer has
+     * to return the cache names for which it currently stores Request/Response pairs.
+     *
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/keys)
+     */
     keys(): Promise<string[]>;
+
     /**
      * The put() method of the CachePersistence interface is used by the
      * Cache object to store Request/Response pairs.
@@ -39,7 +45,7 @@ export interface CachePersistenceLike {
     /**
      * The get() method of the CachePersistence interface finds the entry whose key
      * is the request, and returns an async iterator that yields all the
-     * Request/Response pairs, one at a time.
+     * Request/Response pairs associated to the key, one at a time.
      */
     get(
         cacheName: string,
@@ -71,8 +77,9 @@ export interface CachePersistenceLike {
      * }
      * // when leaving the scope CachePersistence[[Symbol.asyncDisponse]] will be called
      * ```
+     *
      * It will NOT be called when the delete() method of the CacheStorage object is called.
-     * CacheStorage delete() method remove existing pairs, however it can dispose arbitrary
+     * CacheStorage delete() method remove existing pairs, however it can't dispose arbitrary
      * existing CachePersistence instances.
      */
     [Symbol.asyncDispose]?(): Promise<void>;
@@ -99,20 +106,66 @@ export interface CachePersistenceFactory {
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache)
  */
 export interface CacheLike extends Cache {
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/add) */
+    /**
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/add)
+     *
+     * Note: this method is not implemented in Deno built-in Cache objects.
+     */
     add(request: RequestInfo | URL): Promise<undefined>;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/addAll) */
+
+    /**
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/addAll)
+     *
+     * Note: this method is not implemented in Deno built-in Cache objects.
+     */
     addAll(requests: Array<RequestInfo | URL>): Promise<undefined>;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/keys) */
+
+    /**
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/delete)
+     */
+    delete(
+        request: RequestInfo | URL,
+        options?: CacheQueryOptions,
+    ): Promise<boolean>;
+
+    /**
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/keys)
+     *
+     * Note: this method is not implemented in Deno built-in Cache objects.
+     */
     keys(
         request?: RequestInfo | URL,
         options?: CacheQueryOptions,
     ): Promise<ReadonlyArray<Request>>;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/matchAll) */
+
+    /**
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/match)
+     */
+    match(
+        request: RequestInfo | URL,
+        options?: CacheQueryOptions,
+    ): Promise<Response | undefined>;
+
+    /**
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/matchAll)
+     *
+     * Note: this method is not implemented in Deno built-in Cache objects.
+     */
     matchAll(
         request?: RequestInfo | URL,
         options?: CacheQueryOptions,
     ): Promise<ReadonlyArray<Response>>;
+
+    /**
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/put)
+     */
+    put(request: RequestInfo | URL, response: Response): Promise<void>;
+
+    /**
+     * Allows to use `await using` when calling CacheStorage open() method.
+     *
+     * Note: this method is not part of the W3C standard.
+     */
     [Symbol.asyncDispose](): Promise<void>;
 }
 
@@ -122,18 +175,42 @@ export interface CacheLike extends Cache {
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage)
  */
 export interface CacheStorageLike extends CacheStorage {
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/open) */
-    open(cacheName: string): Promise<CacheLike>;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/keys) */
+    /**
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/delete)
+     */
+    delete(cacheName: string): Promise<boolean>;
+
+    /**
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/has)
+     */
+    has(cacheName: string): Promise<boolean>;
+
+    /**
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/keys)
+     *
+     * Note: this method is not implemented in Deno built-in Cache objects.
+     */
     keys(): Promise<string[]>;
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/match) */
+
+    /**
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/match)
+     *
+     * Note: this method is not implemented in Deno built-in Cache objects.
+     */
     match(
         request: RequestInfo | URL,
         options?: CacheQueryOptions,
     ): Promise<Response | undefined>;
+
+    /**
+     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/open)
+     *
+     * Note: this declaration differs from the standard just to specify the return value.
+     */
+    open(cacheName: string): Promise<CacheLike>;
 }
 
-export interface CacheConstructable {
+export interface CacheLikeConstructable {
     new (
         cacheName: string,
         persistence: CachePersistenceLike,
@@ -141,11 +218,11 @@ export interface CacheConstructable {
     ): CacheLike;
 }
 
-export interface CacheStorageConstructable {
+export interface CacheStorageLikeConstructable {
     new (
         factoryOrCtor: CachePersistenceFactory | CachePersistenceConstructable,
         headerNormalizer?: CacheHeaderNormalizer,
-        CacheCtor?: CacheConstructable,
+        CacheCtor?: CacheLikeConstructable,
     ): CacheStorageLike;
 }
 
@@ -199,6 +276,3 @@ export interface DenoKvOpenOptions {
 
 export interface CachePersistenceDenoKvOptions
     extends DenoKvOpenOptions, PoolOptions, CachePersistenceBaseOptions {}
-
-// type Foo = SimplifyDeep<CacheLike>;
-// type Bar = SimplifyDeep<CacheStorageLike>;

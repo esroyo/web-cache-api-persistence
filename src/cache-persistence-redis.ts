@@ -42,6 +42,9 @@ export class CachePersistenceRedis extends CachePersistenceBase
         }, this._options);
     }
 
+    /**
+     * @inheritdoc
+     */
     async keys(): Promise<string[]> {
         const cacheNames = new Set<string>();
         const persistenceKey = (await this._persistenceKey('*')).concat('*');
