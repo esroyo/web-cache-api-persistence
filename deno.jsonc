@@ -1,12 +1,13 @@
 {
     "name": "@esroyo/web-cache-api-persistence",
-    "version": "0.0.0",
+    "version": "0.1.0",
     "exports": "./mod.ts",
     "tasks": {
         "bench": "deno bench -A --unstable-kv src/cache-persistence.bench.ts && rm -rf tmp/*",
         "coverage": "deno task test --clean --reporter=dot --coverage=coverage && deno coverage --lcov --output=coverage.lcov --exclude='src/test-utils.ts|src/cache-storage.base-test.ts' coverage && genhtml -o coverage/report coverage.lcov",
         "fmt": "deno fmt src/",
-        "tag-version": "deno run -A npm:commit-and-tag-version && git push --follow-tags origin main",
+        "release": "deno run -A npm:commit-and-tag-version && git push --follow-tags origin main && deno publish",
+        "release:dry-run": "deno run -A npm:commit-and-tag-version --dry-run && deno publish --dry-run",
         "test": "deno test -A --parallel --unstable-kv",
     },
     "fmt": {
