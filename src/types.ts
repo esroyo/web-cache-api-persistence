@@ -27,7 +27,8 @@ export interface CachePersistenceLike {
 
     /**
      * The delete() method of the CachePersistence interface is used by the
-     * Cache object to delete an existing Request/Response pair.
+     * Cache object to delete an existing Request/Response pair, or all the
+     * pairs associated the the same Request key.
      */
     delete(
         cacheName: string,
@@ -48,7 +49,7 @@ export interface CachePersistenceLike {
     /**
      * The [[Symbol.asyncIterator]] method of the CachePersistence interface returns
      * an async iterator that yields all the existing Request/Response pairs.
-     * The pairs are returned in reverse order that they were inserted, that is newer
+     * The pairs are returned in the order that they were inserted, that is older
      * pairs are yielded first.
      */
     [Symbol.asyncIterator](cacheName: string): AsyncGenerator<
@@ -70,7 +71,9 @@ export interface CachePersistenceLike {
      * }
      * // when leaving the scope CachePersistence[[Symbol.asyncDisponse]] will be called
      * ```
-     * It will also be called when the delete() method of the CacheStorage object gets called.
+     * It will NOT be called when the delete() method of the CacheStorage object is called.
+     * CacheStorage delete() method remove existing pairs, however it can dispose arbitrary
+     * existing CachePersistence instances.
      */
     [Symbol.asyncDispose]?(): Promise<void>;
 }
@@ -162,6 +165,7 @@ export type PlainRes = {
     resBody?: Uint8Array;
 };
 export type PlainReqResMeta = {
+    /** ULID */
     id: string;
     /** The ES Epoch when the cached response expires */
     expires: string;
