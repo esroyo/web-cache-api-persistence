@@ -375,7 +375,7 @@ Deno.bench('CachePersistenceRedis', { group: 'delete()' }, async (b) => {
     b.start();
     await cachesRedis.delete('default');
     b.end();
-    stopRedis(server);
+    //stopRedis(server);
 });
 
 Deno.bench('CachePersistenceKv', { group: 'delete()' }, async (_b) => {

@@ -1,4 +1,5 @@
 import type {
+    CacheConstructable,
     CacheHeaderNormalizer,
     CacheLike,
     CachePersistenceConstructable,
@@ -16,25 +17,36 @@ import { CachePersistenceMemory } from './cache-persistence-memory.ts';
  * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage)
  */
 export class CacheStorage implements CacheStorageLike {
-    protected _caches: Record<string, [CacheLike, CachePersistenceLike]> =
-        Object
-            .create(null);
+    protected _openedCaches: string[] = [];
     protected _persistenceFactory: CachePersistenceFactory;
 
     constructor(
-        factoryOrCtor: CachePersistenceFactory | CachePersistenceConstructable =
-            CachePersistenceMemory,
-        protected _normalizeHeader: CacheHeaderNormalizer = (_, v) => v,
+        persistenceFactoryOrCtor:
+            | CachePersistenceFactory
+            | CachePersistenceConstructable =
+                (function defaultPresistenceFactory() {
+                    let persistence: CachePersistenceLike;
+                    return {
+                        async create() {
+                            if (!persistence) {
+                                persistence = new CachePersistenceMemory();
+                            }
+                            return persistence;
+                        },
+                    };
+                })(),
+        protected _headerNormalizer: CacheHeaderNormalizer = (_, v) => v,
+        protected _CacheCtor: CacheConstructable = Cache,
     ) {
-        if (typeof factoryOrCtor === 'function') {
+        if (typeof persistenceFactoryOrCtor === 'function') {
             // Normalize to a factory
             this._persistenceFactory = {
                 async create() {
-                    return new factoryOrCtor();
+                    return new persistenceFactoryOrCtor();
                 },
             };
         } else {
-            this._persistenceFactory = factoryOrCtor;
+            this._persistenceFactory = persistenceFactoryOrCtor;
         }
     }
 
@@ -42,13 +54,15 @@ export class CacheStorage implements CacheStorageLike {
     async open(cacheName: string): Promise<CacheLike> {
         const prefix = "Failed to execute 'open' on 'CacheStorage'";
         webidl.requiredArguments(arguments.length, 1, prefix);
-        const existingCache = this._caches[cacheName];
-        if (existingCache) {
-            return existingCache[0];
+        const persistence = await this._persistenceFactory.create();
+        const cache = new this._CacheCtor(
+            cacheName,
+            persistence,
+            this._headerNormalizer,
+        );
+        if (!this._openedCaches.includes(cacheName)) {
+            this._openedCaches.push(cacheName);
         }
-        const persistence = await this._persistenceFactory.create(cacheName);
-        const cache = new Cache(cacheName, persistence, this._normalizeHeader);
-        this._caches[cacheName] = [cache, persistence];
         return cache;
     }
 
@@ -56,32 +70,42 @@ export class CacheStorage implements CacheStorageLike {
     async has(cacheName: string): Promise<boolean> {
         const prefix = "Failed to execute 'has' on 'CacheStorage'";
         webidl.requiredArguments(arguments.length, 1, prefix);
-        return cacheName in this._caches;
+        return (await this.keys()).includes(cacheName);
     }
 
     /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/delete) */
     async delete(cacheName: string): Promise<boolean> {
         const prefix = "Failed to execute 'delete' on 'CacheStorage'";
         webidl.requiredArguments(arguments.length, 1, prefix);
-        const existingCache = this._caches[cacheName];
-        if (!existingCache) {
+        if (!(await this.has(cacheName))) {
             return false;
         }
-        for await (
-            const [request, response] of existingCache[1][Symbol.asyncIterator](
-                cacheName,
-            )
-        ) {
-            await existingCache[1].delete(cacheName, request, response);
+        await using cache = await this.open(cacheName);
+        for (const request of await cache.keys()) {
+            await cache.delete(request, {
+                ignoreMethod: true,
+                ignoreSearch: true,
+                ignoreVary: true,
+            });
         }
-        await existingCache[1][Symbol.asyncDispose]?.(cacheName);
-        delete this._caches[cacheName];
+        this._openedCaches.splice(
+            this._openedCaches.findIndex((v) => v === cacheName),
+            1,
+        );
         return true;
     }
 
     /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/keys) */
     async keys(): Promise<string[]> {
-        return Object.keys(this._caches);
+        const persistence = await this._persistenceFactory.create();
+        const allCacheNames = await persistence.keys();
+        await persistence[Symbol.asyncDispose]?.();
+        for (const openedCacheName of this._openedCaches) {
+            if (!allCacheNames.includes(openedCacheName)) {
+                allCacheNames.push(openedCacheName);
+            }
+        }
+        return allCacheNames;
     }
 
     /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/match) */
@@ -90,7 +114,7 @@ export class CacheStorage implements CacheStorageLike {
         options?: CacheQueryOptions,
     ): Promise<Response | undefined> {
         for (const cacheName of await this.keys()) {
-            const cache = await this.open(cacheName);
+            await using cache = await this.open(cacheName);
             const response = await cache.match(request, options);
             if (response) {
                 return response;

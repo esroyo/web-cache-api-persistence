@@ -42,6 +42,15 @@ export class CachePersistenceRedis extends CachePersistenceBase
         }, this._options);
     }
 
+    async keys(): Promise<string[]> {
+        const cacheNames = new Set<string>();
+        const persistenceKey = (await this._persistenceKey('*')).concat('*');
+        for (const key of await this._dbScan(persistenceKey)) {
+            cacheNames.add(this._splitKey(key)[1]);
+        }
+        return [...cacheNames];
+    }
+
     async put(
         cacheName: string,
         request: Request,
@@ -139,7 +148,7 @@ export class CachePersistenceRedis extends CachePersistenceBase
         })();
     }
 
-    async [Symbol.asyncDispose](_cacheName: string): Promise<void> {
+    async [Symbol.asyncDispose](): Promise<void> {
         await this._dbPool.drain();
         await this._dbPool.clear();
     }
@@ -173,8 +182,7 @@ export class CachePersistenceRedis extends CachePersistenceBase
                 found.push(this._splitKey(key));
             }
         }
-        found.sort((a, b) => (a[3] > b[3] ? -1 : 1));
-        return found.map((key) => this._joinKey(key));
+        return found.sort().map((key) => this._joinKey(key));
     }
 
     protected async *_dbKeys(
@@ -189,10 +197,9 @@ export class CachePersistenceRedis extends CachePersistenceBase
             const client = await this._dbPool.acquire();
             result = (await client.sendCommand('ZRANGE', [
                 indexKey,
-                '+inf',
                 '-inf',
+                '+inf',
                 'BYSCORE',
-                'REV',
                 'LIMIT',
                 offset,
                 count,

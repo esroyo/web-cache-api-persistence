@@ -9,11 +9,11 @@ export class Cache implements CacheLike {
     constructor(
         protected _cacheName: string,
         protected _persistence: CachePersistenceLike,
-        protected _normalizeHeader: CacheHeaderNormalizer,
+        protected _headerNormalizer: CacheHeaderNormalizer,
     ) {}
 
     async [Symbol.asyncDispose]() {
-        await this._persistence[Symbol.asyncDispose]?.(this._cacheName);
+        await this._persistence[Symbol.asyncDispose]?.();
     }
 
     /**
@@ -64,6 +64,15 @@ export class Cache implements CacheLike {
         // Step 8.
         if (response.body !== null && response.bodyUsed) {
             throw new TypeError('Response body is already used');
+        }
+
+        const cachedResponse = await this.match(request);
+        if (cachedResponse) {
+            await this._persistence.delete(
+                this._cacheName,
+                request,
+                cachedResponse,
+            );
         }
 
         await this._persistence.put(this._cacheName, request, response);
@@ -148,13 +157,12 @@ export class Cache implements CacheLike {
         requestOrUrl?: RequestInfo | URL,
         options?: CacheQueryOptions,
     ): Promise<ReadonlyArray<Response>> {
-        const responses = await this._matchMax(
+        return this._matchMax(
             Infinity,
             false,
             requestOrUrl,
             options,
         );
-        return Object.freeze(responses);
     }
 
     protected async _matchMax(
@@ -162,19 +170,19 @@ export class Cache implements CacheLike {
         keys: false,
         requestOrUrl?: RequestInfo | URL,
         options?: CacheQueryOptions,
-    ): Promise<Array<Response>>;
+    ): Promise<ReadonlyArray<Response>>;
     protected async _matchMax(
         max: number,
         keys: true,
         requestOrUrl?: RequestInfo | URL,
         options?: CacheQueryOptions,
-    ): Promise<Array<Request>>;
+    ): Promise<ReadonlyArray<Request>>;
     protected async _matchMax(
         max: number,
         keys: boolean,
         requestOrUrl?: RequestInfo | URL,
         options?: CacheQueryOptions,
-    ): Promise<Array<Response | Request>> {
+    ): Promise<ReadonlyArray<Response | Request>> {
         // Step 1.
         let request: Request | null = null;
         // Step 2.
@@ -227,7 +235,7 @@ export class Cache implements CacheLike {
             }
         }
 
-        return responsesOrRequests;
+        return Object.freeze(responsesOrRequests);
     }
 
     /** See https://w3c.github.io/ServiceWorker/#request-matches-cached-item */
@@ -270,11 +278,11 @@ export class Cache implements CacheLike {
             for (const fieldValue of varyHeader.split(',')) {
                 if (
                     fieldValue.trim() === '*' ||
-                    this._normalizeHeader(
+                    this._headerNormalizer(
                             fieldValue,
                             request.headers.get(fieldValue),
                         ) !==
-                        this._normalizeHeader(
+                        this._headerNormalizer(
                             fieldValue,
                             requestQuery.headers.get(fieldValue),
                         )
@@ -291,7 +299,7 @@ export class Cache implements CacheLike {
     async add(url: RequestInfo | URL): Promise<undefined> {
         const response = await fetch(url);
         if (!response.ok) {
-            throw new TypeError('bad response status');
+            throw new TypeError('Bad response status');
         }
         await this.put(url, response);
     }
@@ -308,12 +316,11 @@ export class Cache implements CacheLike {
         requestOrUrl?: RequestInfo | URL,
         options?: CacheQueryOptions,
     ): Promise<ReadonlyArray<Request>> {
-        const requests = await this._matchMax(
+        return this._matchMax(
             Infinity,
             true,
             requestOrUrl,
             options,
         );
-        return Object.freeze(requests.reverse());
     }
 }

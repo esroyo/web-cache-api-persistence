@@ -20,6 +20,15 @@ export class CachePersistenceMemory extends CachePersistenceBase
         this._options = { ...this._defaultOptions, ...options };
     }
 
+    async keys(): Promise<string[]> {
+        const cacheNames = new Set<string>();
+        const persistenceKey = (await this._persistenceKey('')).slice(0, -1);
+        for (const key of await this._dbScan(persistenceKey)) {
+            cacheNames.add(this._splitKey(key)[1]);
+        }
+        return [...cacheNames];
+    }
+
     async put(
         cacheName: string,
         request: Request,
@@ -120,7 +129,7 @@ export class CachePersistenceMemory extends CachePersistenceBase
         })();
     }
 
-    async [Symbol.asyncDispose](_cacheName: string): Promise<void> {
+    async [Symbol.asyncDispose](): Promise<void> {
         for (const timer of Object.values(this._timers)) {
             clearTimeout(timer);
         }
@@ -136,15 +145,14 @@ export class CachePersistenceMemory extends CachePersistenceBase
                 }
             }
         }
-        found.sort((a, b) => (a[3] > b[3] ? -1 : 1));
-        return found.map((key) => this._joinKey(key));
+        return found.sort().map((key) => this._joinKey(key));
     }
 
     protected async _dbKeys(key: string[]): Promise<string[]> {
         const persistenceKey = this._joinKey(key);
         const indexKey = this._indexKey(persistenceKey);
         const index = this._indexes[indexKey] || [];
-        return [...index].sort().reverse();
+        return [...index].sort();
     }
 
     protected async _dbGet(

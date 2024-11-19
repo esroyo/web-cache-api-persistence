@@ -6,6 +6,8 @@ import { type Options as PoolOptions } from 'generic-pool';
  * Provides a persistence mechanism to be used by the Cache object.
  */
 export interface CachePersistenceLike {
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/keys) */
+    keys(): Promise<string[]>;
     /**
      * The put() method of the CachePersistence interface is used by the
      * Cache object to store Request/Response pairs.
@@ -70,14 +72,14 @@ export interface CachePersistenceLike {
      * ```
      * It will also be called when the delete() method of the CacheStorage object gets called.
      */
-    [Symbol.asyncDispose]?(cacheName: string): Promise<void>;
+    [Symbol.asyncDispose]?(): Promise<void>;
 }
 
 /**
  * A constructable that returns a CachePersistence specific implementation.
  */
 export interface CachePersistenceConstructable {
-    new (...args: any[]): CachePersistenceLike;
+    new (): CachePersistenceLike;
 }
 
 /**
@@ -85,7 +87,7 @@ export interface CachePersistenceConstructable {
  * This option is more flexible than passing a simple constructable.
  */
 export interface CachePersistenceFactory {
-    create(cacheName: string): Promise<CachePersistenceLike>;
+    create(): Promise<CachePersistenceLike>;
 }
 
 /**
@@ -108,7 +110,7 @@ export interface CacheLike extends Cache {
         request?: RequestInfo | URL,
         options?: CacheQueryOptions,
     ): Promise<ReadonlyArray<Response>>;
-    [Symbol.asyncDispose](cacheName: string): Promise<void>;
+    [Symbol.asyncDispose](): Promise<void>;
 }
 
 /**
@@ -128,9 +130,19 @@ export interface CacheStorageLike extends CacheStorage {
     ): Promise<Response | undefined>;
 }
 
+export interface CacheConstructable {
+    new (
+        cacheName: string,
+        persistence: CachePersistenceLike,
+        headerNormalizer: CacheHeaderNormalizer,
+    ): CacheLike;
+}
+
 export interface CacheStorageConstructable {
     new (
         factoryOrCtor: CachePersistenceFactory | CachePersistenceConstructable,
+        headerNormalizer?: CacheHeaderNormalizer,
+        CacheCtor?: CacheConstructable,
     ): CacheStorageLike;
 }
 

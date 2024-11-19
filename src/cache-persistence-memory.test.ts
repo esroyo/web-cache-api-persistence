@@ -3,7 +3,7 @@ import { CacheStorage } from './cache-storage.ts';
 
 Object.defineProperty(globalThis, 'caches', {
     value: new CacheStorage(
-        CachePersistenceMemory,
+        undefined,
         (name, value) => (name === 'user-agent' ? 'firefox' : value),
     ),
 });

@@ -34,6 +34,15 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
         }, this._options);
     }
 
+    async keys(): Promise<string[]> {
+        const cacheNames = new Set<string>();
+        const persistenceKey = (await this._persistenceKey('')).slice(0, -1);
+        for (const key of await this._dbScan(persistenceKey)) {
+            cacheNames.add(key[1]);
+        }
+        return [...cacheNames];
+    }
+
     async put(
         cacheName: string,
         request: Request,
@@ -133,7 +142,7 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
         })();
     }
 
-    async [Symbol.asyncDispose](_cacheName: string): Promise<void> {
+    async [Symbol.asyncDispose](): Promise<void> {
         await this._dbPool.drain();
         await this._dbPool.clear();
     }
@@ -150,8 +159,7 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
             }
         }
         await this._dbPool.release(client);
-        found.sort((a, b) => (a[3] > b[3] ? -1 : 1));
-        return found;
+        return found.sort();
     }
 
     protected async _dbKeys(key: string[]): Promise<string[][]> {
@@ -164,7 +172,6 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
         }
         const found = [...indexRes.value]
             .sort()
-            .reverse()
             .map((key) => this._splitKey(key));
         return found;
     }
