@@ -1,6 +1,6 @@
 {
     "name": "@esroyo/web-cache-api-persistence",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "exports": "./mod.ts",
     "tasks": {
         "bench": "deno bench -A --unstable-kv src/cache-persistence.bench.ts && rm -rf tmp/*",
@@ -25,7 +25,6 @@
         "@std/ulid": "jsr:@std/ulid@1.0.0",
         "generic-pool": "npm:generic-pool@3.9.0",
         "msgpack-lite": "npm:msgpack-lite@0.1.26",
-        // "redis": "https://deno.land/x/redis@v0.34.0/mod.ts"
         "redis": "./vendor/deno.land/x/redis@v0.34.0/mod.ts"
     },
     "nodeModulesDir": "none"
