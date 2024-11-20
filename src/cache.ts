@@ -1,4 +1,5 @@
 import type {
+    CacheBatchOperation,
     CacheHeaderNormalizer,
     CacheLike,
     CachePersistenceLike,
@@ -6,6 +7,9 @@ import type {
 import * as webidl from './webidl.ts';
 
 export class Cache implements CacheLike {
+    protected _batchOperations: CacheBatchOperation[] = [];
+    protected _batchProcessing: PromiseWithResolvers<void> | null = null;
+
     constructor(
         protected _cacheName: string,
         protected _persistence: CachePersistenceLike,
@@ -13,6 +17,10 @@ export class Cache implements CacheLike {
     ) {}
 
     async [Symbol.asyncDispose]() {
+        if (!this._batchProcessing) {
+            this._processBatchOperations();
+        }
+        await this._batchProcessing?.promise;
         await this._persistence[Symbol.asyncDispose]?.();
     }
 
@@ -66,16 +74,25 @@ export class Cache implements CacheLike {
             throw new TypeError('Response body is already used');
         }
 
-        const cachedResponse = await this.match(request);
-        if (cachedResponse) {
-            await this._persistence.delete(
-                this._cacheName,
-                request,
-                cachedResponse,
-            );
-        }
+        const operation = Promise.withResolvers<undefined>();
 
-        await this._persistence.put(this._cacheName, request, response);
+        this._enqueueBatchOperation({
+            execute: async () => {
+                const cachedResponse = await this.match(request);
+                if (cachedResponse) {
+                    await this._persistence.delete(
+                        this._cacheName,
+                        request,
+                        cachedResponse,
+                    );
+                }
+
+                await this._persistence.put(this._cacheName, request, response);
+                operation.resolve(undefined);
+            },
+        });
+
+        return operation.promise;
     }
 
     /**
@@ -101,34 +118,42 @@ export class Cache implements CacheLike {
             request = new Request(requestOrUrl);
         }
 
-        let hasDeleted = false;
-        for await (
-            const [cachedRequest, cachedResponse] of this._persistence.get(
-                this._cacheName,
-                request,
-            )
-        ) {
-            if (
-                this._requestMatchesCachedItem(
-                    request,
-                    cachedRequest,
-                    cachedResponse,
-                    options,
-                )
-            ) {
-                if (
-                    await this._persistence.delete(
-                        this._cacheName,
-                        request,
-                        cachedResponse,
-                    )
-                ) {
-                    hasDeleted = true;
-                }
-            }
-        }
+        const operation = Promise.withResolvers<boolean>();
 
-        return hasDeleted;
+        this._enqueueBatchOperation({
+            execute: async () => {
+                let hasDeleted = false;
+                for await (
+                    const [cachedRequest, cachedResponse] of this._persistence
+                        .get(
+                            this._cacheName,
+                            request,
+                        )
+                ) {
+                    if (
+                        this._requestMatchesCachedItem(
+                            request,
+                            cachedRequest,
+                            cachedResponse,
+                            options,
+                        )
+                    ) {
+                        if (
+                            await this._persistence.delete(
+                                this._cacheName,
+                                request,
+                                cachedResponse,
+                            )
+                        ) {
+                            hasDeleted = true;
+                        }
+                    }
+                }
+                operation.resolve(hasDeleted);
+            },
+        });
+
+        return operation.promise;
     }
 
     /**
@@ -160,6 +185,35 @@ export class Cache implements CacheLike {
         return this._matchMax(
             Infinity,
             false,
+            requestOrUrl,
+            options,
+        );
+    }
+
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/add) */
+    async add(url: RequestInfo | URL): Promise<undefined> {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new TypeError('Bad response status');
+        }
+        await this.put(url, response);
+    }
+
+    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/addAll) */
+    async addAll(urls: Array<RequestInfo | URL>): Promise<undefined> {
+        for (const url of urls) {
+            await this.add(url);
+        }
+    }
+
+    /**[MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/keys) */
+    async keys(
+        requestOrUrl?: RequestInfo | URL,
+        options?: CacheQueryOptions,
+    ): Promise<ReadonlyArray<Request>> {
+        return this._matchMax(
+            Infinity,
+            true,
             requestOrUrl,
             options,
         );
@@ -295,32 +349,33 @@ export class Cache implements CacheLike {
         return true;
     }
 
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/add) */
-    async add(url: RequestInfo | URL): Promise<undefined> {
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new TypeError('Bad response status');
+    protected async _processBatchOperations(): Promise<void> {
+        if (!this._batchProcessing) {
+            this._batchProcessing = Promise.withResolvers<void>();
         }
-        await this.put(url, response);
+
+        const batchOperation = this._batchOperations.shift();
+        if (!batchOperation) {
+            this._batchProcessing?.resolve();
+            this._batchProcessing = null;
+            return;
+        }
+
+        try {
+            await batchOperation.execute();
+        } catch (e) {
+            console.error(e);
+        } finally {
+            this._processBatchOperations();
+        }
     }
 
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/addAll) */
-    async addAll(urls: Array<RequestInfo | URL>): Promise<undefined> {
-        for (const url of urls) {
-            await this.add(url);
+    protected _enqueueBatchOperation(
+        operation: CacheBatchOperation,
+    ): void {
+        this._batchOperations.push(operation);
+        if (!this._batchProcessing) {
+            this._processBatchOperations();
         }
-    }
-
-    /**[MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/keys) */
-    async keys(
-        requestOrUrl?: RequestInfo | URL,
-        options?: CacheQueryOptions,
-    ): Promise<ReadonlyArray<Request>> {
-        return this._matchMax(
-            Infinity,
-            true,
-            requestOrUrl,
-            options,
-        );
     }
 }

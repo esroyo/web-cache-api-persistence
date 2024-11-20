@@ -1373,4 +1373,37 @@ Deno.test('Cache', async (t) => {
             );
         },
     });
+
+    await t.step({
+        name: 'should flush pending batched operations when disposed',
+        ignore, // Not possible to control this in native implementations
+        fn: async (t) => {
+            const requestOne = new Request('http://localhost/hello');
+            const responseOne = new Response('Hello, world! #1');
+            const requestTwo = new Request('http://localhost/hello?foo');
+            const responseTwo = new Response('Hello, world! #2');
+            {
+                const cache = await caches.open(cacheName);
+                // A couple of floating "put" operation
+                cache.put(requestOne, responseOne.clone());
+                cache.put(requestTwo, responseTwo.clone());
+                // Without awaiting those operations, they are still not persisted
+                const cachedResponses = await cache.matchAll(requestOne, {
+                    ignoreSearch: true,
+                });
+                assertEquals(cachedResponses.length, 0);
+                // After disposal they will have been persisted
+                await cache[Symbol.asyncDispose]?.();
+            }
+            const cache = await caches.open(cacheName);
+            const cachedResponses = await cache.matchAll(requestOne, {
+                ignoreSearch: true,
+            });
+            assertEquals(cachedResponses.length, 2);
+            assertEquals(await cachedResponses[0].text(), 'Hello, world! #1');
+            assertEquals(await cachedResponses[1].text(), 'Hello, world! #2');
+            await caches.delete(cacheName);
+            await cache[Symbol.asyncDispose]?.();
+        },
+    });
 });

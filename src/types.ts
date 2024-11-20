@@ -230,6 +230,8 @@ export interface CacheHeaderNormalizer {
     (headerName: string, headerValue: string | null): string | null;
 }
 
+export type CacheBatchOperation = { execute: () => Promise<void> };
+
 export type PlainReq = {
     reqUrl: string;
     reqMethod: string;
