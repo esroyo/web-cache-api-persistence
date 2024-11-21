@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.2](https://github.com/esroyo/web-cache-api-persistence/compare/v0.1.1...v0.1.2) (2024-11-21)
+
+
+### Features
+
+* implement Cache delete/put as batched operations ([5775d47](https://github.com/esroyo/web-cache-api-persistence/commit/5775d474ff943a3aa1eb9b4a86b30f5418bd591d))
+
+
+### Bug Fixes
+
+* trim Vary field values ([6abe715](https://github.com/esroyo/web-cache-api-persistence/commit/6abe7155a0dc74be92250c30bd8667708e26a166))
+
+
+### Other
+
+* simplify plain req/res ([c8078f0](https://github.com/esroyo/web-cache-api-persistence/commit/c8078f04d8e304017a444a5fa4f4322c48e3c941))
+
 ## [0.1.1](https://github.com/esroyo/web-cache-api-persistence/compare/v0.1.0...v0.1.1) (2024-11-19)
 
 ## 0.1.0 (2024-11-19)
