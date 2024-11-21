@@ -241,7 +241,7 @@ export type PlainRes = {
     resHeaders: Array<string[]>;
     resStatus: string;
     resStatusText: string;
-    resBody?: Uint8Array;
+    resBody?: string;
 };
 export type PlainReqResMeta = {
     /** ULID */

@@ -176,7 +176,7 @@ export abstract class CachePersistenceBase {
     }
 
     protected async _responseToPlain(response: Response): Promise<PlainRes> {
-        const resBody = new Uint8Array(await response.arrayBuffer());
+        const resBody = await response.text();
         return {
             ...(resBody.length ? { resBody } : undefined),
             resHeaders: [...response.headers.entries()],
@@ -233,7 +233,7 @@ export abstract class CachePersistenceBase {
         return this._encoder.encode(JSON.stringify({
             ...plainReqRes,
             ...(plainReqRes.resBody &&
-                { resBody: this._decoder.decode(plainReqRes.resBody) }),
+                { resBody: plainReqRes.resBody }),
         }));
     }
 
@@ -246,11 +246,6 @@ export abstract class CachePersistenceBase {
         const plainReqRes = JSON.parse(
             this._decoder.decode(serializedPlainReqRes),
         ) as PlainReqRes;
-        if (plainReqRes.resBody) {
-            plainReqRes.resBody = this._encoder.encode(
-                plainReqRes.resBody as unknown as string,
-            );
-        }
         return plainReqRes;
     }
 }
