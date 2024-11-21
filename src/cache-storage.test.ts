@@ -962,7 +962,7 @@ Deno.test('Cache', async (t) => {
                             headers: { 'user-agent': 'firefox1' },
                         });
                         const response = new Response('Hello, world!', {
-                            headers: { 'vary': 'accept-encoding,user-agent' },
+                            headers: { 'vary': 'accept-encoding, user-agent' },
                         });
                         await cache.put(request, response.clone());
                     }

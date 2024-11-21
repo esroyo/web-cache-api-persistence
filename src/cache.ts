@@ -329,9 +329,10 @@ export class Cache implements CacheLike {
         // Step 7.
         const varyHeader = response.headers.get('vary');
         if (varyHeader) {
-            for (const fieldValue of varyHeader.split(',')) {
+            for (const _fieldValue of varyHeader.split(',')) {
+                const fieldValue = _fieldValue.trim();
                 if (
-                    fieldValue.trim() === '*' ||
+                    fieldValue === '*' ||
                     this._headerNormalizer(
                             fieldValue,
                             request.headers.get(fieldValue),
