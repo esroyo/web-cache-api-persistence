@@ -268,7 +268,11 @@ export class CachePersistenceRedis extends CachePersistenceBase
             +(+created[0] * 1000 + created[1]),
             effectiveKey,
         ]);
-        tx.sendCommand('PEXPIRE', [indexKey, this._defaultExpireIn]);
+        tx.sendCommand('PEXPIRE', [
+            indexKey,
+            Math.min(expiresIn, this._maxExpireIn),
+            'GT',
+        ]);
         await tx.flush();
         await this._dbPool.release(client);
     }

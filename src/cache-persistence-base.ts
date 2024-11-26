@@ -13,7 +13,7 @@ import type {
 
 export abstract class CachePersistenceBase {
     protected _decoder: TextDecoder = new TextDecoder();
-    protected _defaultExpireIn: number =
+    protected _maxExpireIn: number =
         2_592_000_000; /* 1000 * 60 * 60 * 24 * 30 */
     protected _encoder: TextEncoder = new TextEncoder();
     protected _counter: Record<number, number> = Object.create(null);
@@ -118,7 +118,7 @@ export abstract class CachePersistenceBase {
                             (+value - correctedReceivedAge) * 1000,
                             0,
                         );
-                        return Math.round(msLeft);
+                        return Math.min(Math.round(msLeft), this._maxExpireIn);
                     }
                 }
             }
@@ -127,9 +127,9 @@ export abstract class CachePersistenceBase {
         if (expireDate) {
             const expireEpochMs = new Date(expireDate).getTime();
             const msLeft = Math.max(expireEpochMs - now, 0);
-            return Math.round(msLeft);
+            return Math.min(Math.round(msLeft), this._maxExpireIn);
         }
-        return this._defaultExpireIn;
+        return this._maxExpireIn;
     }
 
     protected _hasExpired(meta: PlainReqResMeta): boolean {

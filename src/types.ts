@@ -277,4 +277,6 @@ export interface DenoKvOpenOptions {
 }
 
 export interface CachePersistenceDenoKvOptions
-    extends DenoKvOpenOptions, PoolOptions, CachePersistenceBaseOptions {}
+    extends DenoKvOpenOptions, PoolOptions, CachePersistenceBaseOptions {
+    consistency?: Deno.KvConsistencyLevel | undefined;
+}

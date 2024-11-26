@@ -17,6 +17,7 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
     protected override get _defaultOptions(): CachePersistenceDenoKvOptions {
         return {
             ...super._defaultOptions,
+            consistency: 'strong' satisfies Deno.KvConsistencyLevel,
             // Pool defaults
             max: 1,
             min: 1,
@@ -179,7 +180,7 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
     protected async _dbGet(key: string[]): Promise<PlainReqRes | null> {
         const client = await this._dbPool.acquire();
         const result = await kvToolboxGet(client, key, {
-            consistency: 'eventual',
+            consistency: this._options.consistency,
         });
         await this._dbPool.release(client);
         if (!result.value) {
@@ -199,7 +200,7 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
             .check(indexRes)
             .deleteBlob(key);
         if (index.size) {
-            op.set(indexKey, index, { expireIn: this._defaultExpireIn });
+            op.set(indexKey, index, { expireIn: this._maxExpireIn });
         } else {
             op.delete(indexKey);
         }
@@ -219,7 +220,7 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
         index.add(this._joinKey(key));
         await batchedAtomic(client)
             .check(indexRes)
-            .set(indexKey, index, { expireIn: this._defaultExpireIn })
+            .set(indexKey, index, { expireIn: this._maxExpireIn })
             .setBlob(key, this._serialize(value), { expireIn })
             .commit();
         await this._dbPool.release(client);
