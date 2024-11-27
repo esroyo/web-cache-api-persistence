@@ -689,30 +689,6 @@ Deno.test('Cache', async (t) => {
                 await cache[Symbol.asyncDispose]?.();
             },
         );
-
-        await t.step({
-            name:
-                'should return undefined when request cotains "cache-control=no-cache" even if exists a cached request',
-            ignore, // Not standard
-            fn: async () => {
-                const cache = await caches.open(cacheName);
-                {
-                    const request = new Request('http://localhost/hello');
-                    const response = new Response('Hello, world!');
-                    await cache.put(request, response.clone());
-                }
-                const request = new Request('http://localhost/hello', {
-                    headers: { 'cache-control': 'no-cache' },
-                });
-                const cachedResponse = await cache.match(request);
-                assertEquals(
-                    cachedResponse,
-                    undefined,
-                );
-                await caches.delete(cacheName);
-                await cache[Symbol.asyncDispose]?.();
-            },
-        });
     });
 
     await t.step({

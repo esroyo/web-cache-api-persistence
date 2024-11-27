@@ -251,17 +251,6 @@ export class Cache implements CacheLike {
             return responsesOrRequests;
         }
 
-        // Warn: Not standard
-        const cacheControl = request.headers.get('cache-control');
-        if (cacheControl) {
-            for (const _fieldValue of cacheControl.split(',')) {
-                const fieldValue = _fieldValue.trim();
-                if (fieldValue === 'no-cache') {
-                    return [];
-                }
-            }
-        }
-
         for await (
             const [cachedRequest, cachedResponse] of this._persistence.get(
                 this._cacheName,
