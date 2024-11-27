@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.4](https://github.com/esroyo/web-cache-api-persistence/compare/v0.1.3...v0.1.4) (2024-11-27)
+
+
+### Features
+
+* honor request no-cache ([414c59a](https://github.com/esroyo/web-cache-api-persistence/commit/414c59ab2d59a15dac6d3271c42314f1823f5740))
+
 ## [0.1.3](https://github.com/esroyo/web-cache-api-persistence/compare/v0.1.2...v0.1.3) (2024-11-26)
 
 
