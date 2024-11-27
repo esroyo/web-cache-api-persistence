@@ -35,16 +35,12 @@ export class Cache implements CacheLike {
     ): Promise<void> {
         const prefix = "Failed to execute 'put' on 'Cache'";
         webidl.requiredArguments(arguments.length, 2, prefix);
-        // Step 1.
         let request: Request | null = null;
-        // Step 2.
         if (requestOrUrl instanceof Request) {
             request = requestOrUrl;
         } else {
-            // Step 3.
             request = new Request(requestOrUrl);
         }
-        // Step 4.
         const reqUrl = new URL(request.url);
         if (reqUrl.protocol !== 'http:' && reqUrl.protocol !== 'https:') {
             throw new TypeError(
@@ -54,12 +50,9 @@ export class Cache implements CacheLike {
         if (request.method !== 'GET') {
             throw new TypeError('Request method must be GET');
         }
-        // Step 5.
-        // Step 6.
         if (response.status === 206) {
             throw new TypeError('Response status must not be 206');
         }
-        // Step 7.
         const varyHeader = response.headers.get('vary');
         if (varyHeader) {
             for (const fieldValue of varyHeader.split(',')) {
@@ -69,7 +62,6 @@ export class Cache implements CacheLike {
             }
         }
 
-        // Step 8.
         if (response.body !== null && response.bodyUsed) {
             throw new TypeError('Response body is already used');
         }
@@ -106,9 +98,7 @@ export class Cache implements CacheLike {
     ): Promise<boolean> {
         const prefix = "Failed to execute 'delete' on 'Cache'";
         webidl.requiredArguments(arguments.length, 1, prefix);
-        // Step 1.
         let request: Request | null = null;
-        // Step 2.
         if (requestOrUrl instanceof Request) {
             request = requestOrUrl;
             if (!options?.ignoreMethod && request.method !== 'GET') {
@@ -237,9 +227,7 @@ export class Cache implements CacheLike {
         requestOrUrl?: RequestInfo | URL,
         options?: CacheQueryOptions,
     ): Promise<ReadonlyArray<Response | Request>> {
-        // Step 1.
         let request: Request | null = null;
-        // Step 2.
         if (requestOrUrl instanceof Request) {
             request = requestOrUrl;
             if (!options?.ignoreMethod && request.method !== 'GET') {
@@ -249,13 +237,8 @@ export class Cache implements CacheLike {
             request = new Request(requestOrUrl);
         }
 
-        // Step 5.
         const responsesOrRequests: Array<Response | Request> = [];
-        // Step 5.2
         if (!request) {
-            // Step 5.3
-            // Note: we have to return all responses in the cache when
-            // the request is null.
             for await (
                 const [cachedRequest, cachedResponse] of this._persistence
                     [Symbol.asyncIterator](this._cacheName)
@@ -266,6 +249,17 @@ export class Cache implements CacheLike {
                 }
             }
             return responsesOrRequests;
+        }
+
+        // Warn: Not standard
+        const cacheControl = request.headers.get('cache-control');
+        if (cacheControl) {
+            for (const _fieldValue of cacheControl.split(',')) {
+                const fieldValue = _fieldValue.trim();
+                if (fieldValue === 'no-cache') {
+                    return [];
+                }
+            }
         }
 
         for await (
@@ -299,26 +293,20 @@ export class Cache implements CacheLike {
         response: Response | null = null,
         options?: CacheQueryOptions,
     ): boolean {
-        // Step 1.
         if (!options?.ignoreMethod && request.method !== 'GET') {
             return false;
         }
-        // Step 2.
         const queryUrl = new URL(requestQuery.url);
-        // Step 3.
         const cachedUrl = new URL(request.url);
-        // Step 4.
         if (options?.ignoreSearch) {
             queryUrl.search = '';
             cachedUrl.search = '';
         }
         queryUrl.hash = '';
         cachedUrl.hash = '';
-        // Step 5.
         if (queryUrl.toString() !== cachedUrl.toString()) {
             return false;
         }
-        // Step 6.
         if (
             response === null ||
             options?.ignoreVary ||
@@ -326,7 +314,6 @@ export class Cache implements CacheLike {
         ) {
             return true;
         }
-        // Step 7.
         const varyHeader = response.headers.get('vary');
         if (varyHeader) {
             for (const _fieldValue of varyHeader.split(',')) {
