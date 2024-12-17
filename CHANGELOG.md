@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.6](https://github.com/esroyo/web-cache-api-persistence/compare/v0.1.5...v0.1.6) (2024-12-17)
+
+
+### Other
+
+* add minimal info to README ([dd9ba07](https://github.com/esroyo/web-cache-api-persistence/commit/dd9ba071f75d8410a13442083f0a9dd45fc2b9c2))
+
 ## [0.1.5](https://github.com/esroyo/web-cache-api-persistence/compare/v0.1.4...v0.1.5) (2024-11-27)
 
 
