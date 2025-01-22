@@ -55,7 +55,7 @@ export class Cache implements CacheLike {
         }
         const varyHeader = response.headers.get('vary');
         if (varyHeader) {
-            for (const fieldValue of varyHeader.split(',')) {
+            for (const fieldValue of varyHeader.toLowerCase().split(',')) {
                 if (fieldValue.trim() === '*') {
                     throw new TypeError('Vary header must not contain "*"');
                 }
@@ -305,7 +305,7 @@ export class Cache implements CacheLike {
         }
         const varyHeader = response.headers.get('vary');
         if (varyHeader) {
-            for (const _fieldValue of varyHeader.split(',')) {
+            for (const _fieldValue of varyHeader.toLowerCase().split(',')) {
                 const fieldValue = _fieldValue.trim();
                 if (
                     fieldValue === '*' ||

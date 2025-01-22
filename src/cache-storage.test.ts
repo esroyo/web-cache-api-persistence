@@ -916,7 +916,7 @@ Deno.test('Cache', async (t) => {
                             headers: { 'accept-encoding': 'deflate' },
                         });
                         const response = new Response('Hello, world!', {
-                            headers: { 'vary': 'accept-encoding' },
+                            headers: { 'vary': 'Accept-Encoding' },
                         });
                         await cache.put(request, response.clone());
                     }
