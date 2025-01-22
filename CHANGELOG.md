@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.7](https://github.com/esroyo/web-cache-api-persistence/compare/v0.1.6...v0.1.7) (2025-01-22)
+
+
+### Bug Fixes
+
+* normalize Vary contents to lower case ([67fa217](https://github.com/esroyo/web-cache-api-persistence/commit/67fa217de54e5d3d1150a58577bcc0c6bac45f2e))
+
 ## [0.1.6](https://github.com/esroyo/web-cache-api-persistence/compare/v0.1.5...v0.1.6) (2024-12-17)
 
 
