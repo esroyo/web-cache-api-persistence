@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.10](https://github.com/esroyo/web-cache-api-persistence/compare/v0.1.9...v0.1.10) (2025-02-12)
+
+
+### Other
+
+* parallel retrieval of keys for redis ([ff7b8a8](https://github.com/esroyo/web-cache-api-persistence/commit/ff7b8a8550d9cc399d1611c250229b88803c382c))
+
 ## [0.1.9](https://github.com/esroyo/web-cache-api-persistence/compare/v0.1.8...v0.1.9) (2025-02-12)
 
 
