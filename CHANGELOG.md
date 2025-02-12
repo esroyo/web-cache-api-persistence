@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.8](https://github.com/esroyo/web-cache-api-persistence/compare/v0.1.7...v0.1.8) (2025-02-12)
+
+
+### Other
+
+* default to 1k count for redis scan ([ff24204](https://github.com/esroyo/web-cache-api-persistence/commit/ff24204daff0e638d977c062efdcfd05d192a5f9))
+
 ## [0.1.7](https://github.com/esroyo/web-cache-api-persistence/compare/v0.1.6...v0.1.7) (2025-01-22)
 
 
