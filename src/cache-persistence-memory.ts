@@ -5,6 +5,7 @@ import type {
     PlainReqRes,
 } from './types.ts';
 import * as webidl from './webidl.ts';
+import * as sorted from 'sorted';
 
 export class CachePersistenceMemory extends CachePersistenceBase
     implements CachePersistenceLike {
@@ -137,15 +138,15 @@ export class CachePersistenceMemory extends CachePersistenceBase
 
     protected async _dbScan(key: string[]): Promise<string[]> {
         const persistenceKey = this._joinKey(key);
-        const found = [];
+        const found: string[] = [];
         for (const index in this._indexes) {
             if (index.startsWith(persistenceKey)) {
                 for (const key of this._indexes[index]) {
-                    found.push(this._splitKey(key));
+                    sorted.add(found, key, this._compareFn);
                 }
             }
         }
-        return found.sort().map((key) => this._joinKey(key));
+        return found;
     }
 
     protected async _dbKeys(key: string[]): Promise<string[]> {

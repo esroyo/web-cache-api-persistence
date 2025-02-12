@@ -9,6 +9,7 @@ import type {
 } from './types.ts';
 import { CachePersistenceBase } from './cache-persistence-base.ts';
 import * as webidl from './webidl.ts';
+import * as sorted from 'sorted';
 
 export class CachePersistenceDenoKv extends CachePersistenceBase
     implements CachePersistenceLike {
@@ -151,16 +152,16 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
     protected async _dbScan(key: string[]): Promise<string[][]> {
         const client = await this._dbPool.acquire();
         const iter = client.list<string>({ prefix: key });
-        const found = [];
+        const found: string[] = [];
         for await (const res of iter) {
             if (res.key.length === 3) { // This is an index (a Set)
                 for (const key of res.value) {
-                    found.push(this._splitKey(key));
+                    sorted.add(found, key, this._compareFn);
                 }
             }
         }
         await this._dbPool.release(client);
-        return found.sort();
+        return found.map(this._splitKey);
     }
 
     protected async _dbKeys(key: string[]): Promise<string[][]> {

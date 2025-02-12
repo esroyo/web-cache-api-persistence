@@ -7,6 +7,7 @@ import type {
 } from './types.ts';
 import { CachePersistenceBase } from './cache-persistence-base.ts';
 import * as webidl from './webidl.ts';
+import * as sorted from 'sorted';
 
 export class CachePersistenceRedis extends CachePersistenceBase
     implements CachePersistenceLike {
@@ -157,8 +158,8 @@ export class CachePersistenceRedis extends CachePersistenceBase
     }
 
     protected async _dbScan(pattern: string[]): Promise<string[]> {
-        const indexes = [];
-        const found = [];
+        const indexes: string[] = [];
+        const found: string[] = [];
         let cursor = '0';
         const persistenceKey = this._joinKey(pattern);
         const client = await this._dbPool.acquire();
@@ -180,16 +181,16 @@ export class CachePersistenceRedis extends CachePersistenceBase
         await this._dbPool.release(client);
         for (const index of indexes) {
             for await (
-                const key of this._dbKeys(this._splitKey(index), 1_000)
+                const key of this._dbKeys(index, 1_000)
             ) {
-                found.push(this._splitKey(key));
+                sorted.add(found, key, this._compareFn);
             }
         }
-        return found.sort().map((key) => this._joinKey(key));
+        return found;
     }
 
     protected async *_dbKeys(
-        key: string[],
+        key: string[] | string,
         keysLimit = this._options.keysLimit,
     ): AsyncGenerator<string, void, unknown> {
         const indexKey = this._indexKey(key);

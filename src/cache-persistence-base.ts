@@ -248,4 +248,16 @@ export abstract class CachePersistenceBase {
         ) as PlainReqRes;
         return plainReqRes;
     }
+
+    protected _compareFn(keyOne: string, keyTwo: string): number {
+        const ulidOne = keyOne.slice(-26);
+        const ulidTwo = keyTwo.slice(-26);
+        if (ulidOne < ulidTwo) {
+            return -1;
+        }
+        if (ulidOne > ulidTwo) {
+            return 1;
+        }
+        return 0;
+    }
 }
