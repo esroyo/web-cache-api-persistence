@@ -168,7 +168,7 @@ export class CachePersistenceRedis extends CachePersistenceBase
                 'MATCH',
                 persistenceKey,
                 'COUNT',
-                100_000,
+                1_000,
                 'TYPE',
                 'zset',
             ]);
@@ -180,7 +180,7 @@ export class CachePersistenceRedis extends CachePersistenceBase
         await this._dbPool.release(client);
         for (const index of indexes) {
             for await (
-                const key of this._dbKeys(this._splitKey(index), 100_000)
+                const key of this._dbKeys(this._splitKey(index), 1_000)
             ) {
                 found.push(this._splitKey(key));
             }
