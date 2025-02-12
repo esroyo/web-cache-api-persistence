@@ -179,13 +179,15 @@ export class CachePersistenceRedis extends CachePersistenceBase
             }
         } while (cursor !== '0');
         await this._dbPool.release(client);
-        for (const index of indexes) {
-            for await (
-                const key of this._dbKeys(index, 1_000)
-            ) {
-                sorted.add(found, key, this._compareFn);
-            }
-        }
+        await Promise.all(
+            indexes.map(async (index) => {
+                for await (
+                    const key of this._dbKeys(index, 1_000)
+                ) {
+                    sorted.add(found, key, this._compareFn);
+                }
+            }),
+        );
         return found;
     }
 
