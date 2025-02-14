@@ -20,6 +20,7 @@ export class CachePersistenceRedis extends CachePersistenceBase
             hostname: '127.0.0.1',
             port: '6379',
             // Pool defaults
+            evictionRunIntervalMillis: 60 * 1000,
             max: 4,
             min: 2,
             testOnBorrow: true,

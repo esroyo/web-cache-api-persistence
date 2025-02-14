@@ -20,6 +20,7 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
             ...super._defaultOptions,
             consistency: 'strong' satisfies Deno.KvConsistencyLevel,
             // Pool defaults
+            evictionRunIntervalMillis: 60 * 1000,
             max: 1,
             min: 1,
         };
