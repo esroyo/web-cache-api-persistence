@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.11](https://github.com/esroyo/web-cache-api-persistence/compare/v0.1.10...v0.1.11) (2025-02-14)
+
+
+### Bug Fixes
+
+* run connections pool evition by default ([2f5b297](https://github.com/esroyo/web-cache-api-persistence/commit/2f5b297d80cfec58e74b8f935aad7d4239abe851))
+
 ## [0.1.10](https://github.com/esroyo/web-cache-api-persistence/compare/v0.1.9...v0.1.10) (2025-02-12)
 
 
