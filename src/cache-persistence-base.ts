@@ -228,7 +228,9 @@ export abstract class CachePersistenceBase {
 
     protected _serialize(plainReqRes: PlainReqRes): Uint8Array {
         if (this._options.compress) {
-            return msgpack.encode(plainReqRes, { codec: this._msgpackCodec });
+            return msgpack.encode(plainReqRes, {
+                codec: this._msgpackCodec,
+            }) as Uint8Array;
         }
         return this._encoder.encode(JSON.stringify({
             ...plainReqRes,
