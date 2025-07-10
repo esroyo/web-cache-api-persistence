@@ -1,5 +1,5 @@
 import { createPool, type Pool } from 'generic-pool';
-import { connect, type Redis } from 'redis';
+import { connect, type Redis } from '@db/redis';
 import type {
     CachePersistenceLike,
     CachePersistenceRedisOptions,
@@ -26,6 +26,7 @@ export class CachePersistenceRedis extends CachePersistenceBase
             testOnBorrow: true,
             // Custom options
             keysLimit: 4,
+            instrumentation: false,
         };
     }
 
@@ -33,7 +34,16 @@ export class CachePersistenceRedis extends CachePersistenceBase
         super();
         this._options = { ...this._defaultOptions, ...options };
         this._dbPool = createPool<Redis>({
-            create: async () => connect(this._options),
+            create: async () => {
+                const clientPromise = connect(this._options);
+                if (!this._options.instrumentation) {
+                    return clientPromise;
+                }
+                const { instrumentRedisClient } = await import(
+                    './instrument-redis-client.ts'
+                );
+                return instrumentRedisClient(clientPromise);
+            },
             destroy: async (client) => client.close(),
             validate: async (client) => {
                 if (!client.isConnected) {
@@ -241,16 +251,16 @@ export class CachePersistenceRedis extends CachePersistenceBase
         ...keys: Array<string[] | string>
     ): Promise<boolean> {
         const client = await this._dbPool.acquire();
-        const tx = client.tx();
+        const pipeline = client.pipeline();
         for (const key of keys) {
             const persistenceKey = Array.isArray(key)
                 ? this._joinKey(key)
                 : key;
             const indexKey = this._indexKey(key);
-            tx.sendCommand('DEL', [persistenceKey]);
-            tx.sendCommand('ZREM', [indexKey, persistenceKey]);
+            pipeline.sendCommand('DEL', [persistenceKey]);
+            pipeline.sendCommand('ZREM', [indexKey, persistenceKey]);
         }
-        const result = await tx.flush();
+        const result = await pipeline.flush();
         await this._dbPool.release(client);
         return result.length && result[0] ? true : false;
     }
@@ -264,20 +274,20 @@ export class CachePersistenceRedis extends CachePersistenceBase
         const created = value.created.split('-');
         const indexKey = this._indexKey(key);
         const client = await this._dbPool.acquire();
-        const tx = client.tx();
-        tx.sendCommand('SET', [effectiveKey, this._serialize(value)]);
-        tx.sendCommand('PEXPIRE', [effectiveKey, expiresIn]);
-        tx.sendCommand('ZADD', [
+        const pipeline = client.pipeline();
+        pipeline.sendCommand('SET', [effectiveKey, this._serialize(value)]);
+        pipeline.sendCommand('PEXPIRE', [effectiveKey, expiresIn]);
+        pipeline.sendCommand('ZADD', [
             indexKey,
             +(+created[0] * 1000 + created[1]),
             effectiveKey,
         ]);
-        tx.sendCommand('PEXPIRE', [
+        pipeline.sendCommand('PEXPIRE', [
             indexKey,
             Math.min(expiresIn, this._maxExpireIn),
             'GT',
         ]);
-        await tx.flush();
+        await pipeline.flush();
         await this._dbPool.release(client);
     }
 

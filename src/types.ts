@@ -1,5 +1,12 @@
-import { type RedisConnectOptions } from 'redis';
+import opentelemetry from '@opentelemetry/api';
+import type { Redis, RedisConnectOptions, RedisPipeline } from '@db/redis';
 import { type Options as PoolOptions } from 'generic-pool';
+
+export type OpenTelemetry = typeof opentelemetry;
+
+export type RedisClient = Pick<Redis, 'sendCommand'> & {
+    pipeline: () => RedisClient & Pick<RedisPipeline, 'flush'>;
+};
 
 /**
  * Provides a persistence mechanism to be used by the Cache object.
@@ -270,6 +277,7 @@ export interface CachePersistenceMemoryOptions
 export interface CachePersistenceRedisOptions
     extends RedisConnectOptions, PoolOptions, CachePersistenceBaseOptions {
     keysLimit?: number;
+    instrumentation?: boolean;
 }
 
 export interface DenoKvOpenOptions {
