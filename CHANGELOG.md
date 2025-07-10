@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.2.0](https://github.com/esroyo/web-cache-api-persistence/compare/v0.1.11...v0.2.0) (2025-07-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* add option to instrument redis with opentelemetry
+* upgrade to redis@0.38 and kv-toolbox@0.30.0
+
+### Features
+
+* add option to instrument redis with opentelemetry ([a925a22](https://github.com/esroyo/web-cache-api-persistence/commit/a925a22acb5d5016cc5756d0139abf439e4c6bb8))
+
+
+### Other
+
+* upgrade to redis@0.38 and kv-toolbox@0.30.0 ([d47e7ea](https://github.com/esroyo/web-cache-api-persistence/commit/d47e7ea60e3473ae9a2010bc0317ef2f324380e3))
+
 ## [0.1.11](https://github.com/esroyo/web-cache-api-persistence/compare/v0.1.10...v0.1.11) (2025-02-14)
 
 
