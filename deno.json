@@ -17,7 +17,7 @@
         "singleQuote": true
     },
     "imports": {
-        "@db/redis": "jsr:@db/redis@0.35.0",
+        "@db/redis": "./vendor/deno.land/x/redis@v0.34.0/mod.ts",
         "@jabr/xxhash64": "jsr:@jabr/xxhash64@2.0.0",
         "@kitsonk/kv-toolbox": "jsr:@kitsonk/kv-toolbox@0.30.0",
         "@opentelemetry/api": "npm:@opentelemetry/api@1.8.0",
