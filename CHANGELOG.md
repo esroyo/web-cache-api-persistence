@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.2.2](https://github.com/esroyo/web-cache-api-persistence/compare/v0.2.1...v0.2.2) (2025-07-11)
+
+
+### ⚠ BREAKING CHANGES
+
+* downgrade to redis 0.34
+
+### Bug Fixes
+
+* downgrade to redis 0.34 ([2f52798](https://github.com/esroyo/web-cache-api-persistence/commit/2f5279822722885008bcb27b450a852dc3666b98))
+
 ## [0.2.1](https://github.com/esroyo/web-cache-api-persistence/compare/v0.2.0...v0.2.1) (2025-07-11)
 
 

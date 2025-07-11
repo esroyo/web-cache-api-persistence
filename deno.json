@@ -1,6 +1,6 @@
 {
     "name": "@esroyo/web-cache-api-persistence",
-    "version": "0.2.1",
+    "version": "0.2.2",
     "exports": "./mod.ts",
     "tasks": {
         "bench": "deno bench -A --unstable-kv src/cache-persistence.bench.ts && rm -rf tmp/*",
