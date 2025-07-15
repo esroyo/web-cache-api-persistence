@@ -244,7 +244,7 @@ export class CachePersistenceRedis extends CachePersistenceBase
                     yield key;
                 }
             }
-        } while (result.length);
+        } while (result.length === count);
     }
 
     protected async _dbGet(
