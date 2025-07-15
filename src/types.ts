@@ -276,7 +276,7 @@ export interface CachePersistenceMemoryOptions
 
 export interface CachePersistenceRedisOptions
     extends RedisConnectOptions, PoolOptions, CachePersistenceBaseOptions {
-    keysLimit?: number;
+    bulkLimit?: number;
     instrumentation?: boolean;
 }
 

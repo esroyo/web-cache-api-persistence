@@ -25,7 +25,7 @@ export class CachePersistenceRedis extends CachePersistenceBase
             min: 2,
             testOnBorrow: true,
             // Custom options
-            keysLimit: 4,
+            bulkLimit: 1,
             instrumentation: false,
         };
     }
@@ -125,18 +125,34 @@ export class CachePersistenceRedis extends CachePersistenceBase
         request: Request,
     ): AsyncGenerator<readonly [Request, Response], void, unknown> {
         const persistenceKey = await this._persistenceKey(cacheName, request);
-        for await (const key of this._dbKeys(persistenceKey)) {
-            const plainReqRes = await this._dbGet(key);
-            if (!plainReqRes) {
-                continue;
+        const limit = Math.max(this._options.bulkLimit ?? 0, 1);
+        const asyncIterator = this._dbKeys(persistenceKey, limit);
+        let done = false;
+        while (!done) {
+            const candidateKeys: string[] = [];
+            // Exhaust the iterator up to the RT limit
+            // so that we can bulk-get later
+            for (let count = 0; count < limit && !done; count += 1) {
+                const iteratorResult = await asyncIterator.next();
+                if (iteratorResult.value) {
+                    candidateKeys.push(iteratorResult.value);
+                } else {
+                    done = true;
+                }
             }
-            if (this._hasExpired(plainReqRes)) {
-                continue;
+            const plainReqResList = await this._dbGet(candidateKeys);
+            for (const plainReqRes of plainReqResList) {
+                if (!plainReqRes) {
+                    continue;
+                }
+                if (this._hasExpired(plainReqRes)) {
+                    continue;
+                }
+                yield [
+                    this._plainToRequest(plainReqRes),
+                    this._plainToResponse(plainReqRes),
+                ] as const;
             }
-            yield [
-                this._plainToRequest(plainReqRes),
-                this._plainToResponse(plainReqRes),
-            ] as const;
         }
     }
 
@@ -151,7 +167,7 @@ export class CachePersistenceRedis extends CachePersistenceBase
             const persistenceKey = await instance._persistenceKey(cacheName);
             const keys = await instance._dbScan([...persistenceKey, '*']);
             for (const key of keys) {
-                const plainReqRes = await instance._dbGet(key);
+                const [plainReqRes] = await instance._dbGet([key]);
                 if (!plainReqRes) {
                     continue;
                 }
@@ -204,10 +220,10 @@ export class CachePersistenceRedis extends CachePersistenceBase
 
     protected async *_dbKeys(
         key: string[] | string,
-        keysLimit = this._options.keysLimit,
+        bulkLimit = this._options.bulkLimit,
     ): AsyncGenerator<string, void, unknown> {
         const indexKey = this._indexKey(key);
-        const count = Math.max(keysLimit ?? 0, 1);
+        const count = Math.max(bulkLimit ?? 0, 1);
         let offset = 0;
         let result: string[] = [];
         do {
@@ -232,19 +248,32 @@ export class CachePersistenceRedis extends CachePersistenceBase
     }
 
     protected async _dbGet(
-        key: string[] | string,
-    ): Promise<PlainReqRes | null> {
-        const persistenceKey = Array.isArray(key) ? this._joinKey(key) : key;
+        keys: Array<string[] | string>,
+    ): Promise<Array<PlainReqRes | null>> {
+        const persistenceKeys: string[] = [];
         const client = await this._dbPool.acquire();
-        const result = await client.sendCommand('GET', [persistenceKey], {
-            returnUint8Arrays: true,
-        }) as Uint8Array;
-        await this._dbPool.release(client);
-        if (!result) {
-            await this._dbDel(key);
-            return null;
+        const pl = client.pipeline();
+        for (const key of keys) {
+            const persistenceKey = Array.isArray(key)
+                ? this._joinKey(key)
+                : key;
+            persistenceKeys.push(persistenceKey);
+            pl.sendCommand('GET', [persistenceKey], {
+                returnUint8Arrays: true,
+            });
         }
-        return this._parse(result) as PlainReqRes;
+        const results = await pl.flush() as Array<Uint8Array>;
+        const parsed: Array<PlainReqRes | null> = [];
+        for (const [idx, result] of Object.entries(results)) {
+            if (!result) {
+                await this._dbDel(persistenceKeys[+idx]);
+                parsed.push(null);
+            } else {
+                parsed.push(this._parse(result) as PlainReqRes);
+            }
+        }
+        await this._dbPool.release(client);
+        return parsed;
     }
 
     protected async _dbDel(
