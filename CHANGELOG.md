@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.3.1](https://github.com/esroyo/web-cache-api-persistence/compare/v0.3.0...v0.3.1) (2025-07-15)
+
+
+### Bug Fixes
+
+* avoid extra unneded zrange command ([c3531c6](https://github.com/esroyo/web-cache-api-persistence/commit/c3531c67ddd5831aaff0d15cae64b66cbf0d4682))
+
 ## [0.3.0](https://github.com/esroyo/web-cache-api-persistence/compare/v0.2.2...v0.3.0) (2025-07-15)
 
 
