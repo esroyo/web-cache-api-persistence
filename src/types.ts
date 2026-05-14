@@ -269,6 +269,52 @@ export type PlainReqRes =
 
 export interface CachePersistenceBaseOptions {
     compress?: boolean;
+    /**
+     * Controls what happens to a cached entry once its HTTP expiration is
+     * reached (per `Cache-Control`/`Expires`).
+     *
+     * - `'evict'` (default): HTTP-cache pragmatism. When the entry's HTTP
+     *   expiration is reached, the entry is removed from storage. The eviction
+     *   primitive (`setTimeout` / `setBlob` `expireIn` / `PEXPIRE`) fires at
+     *   `min(httpExpiresIn, maxPersistenceTtlMs)`. `get()` and the async
+     *   iterator skip entries whose `expires` is in the past as an extra guard
+     *   against the eviction-timing race.
+     * - `'retain'`: W3C-spec compliance. HTTP expiration only marks the entry
+     *   as stale; the entry continues to live in storage and is yielded by
+     *   `get()`/the async iterator (with the `x-cachestorage-stale: 1` header
+     *   set on the materialised `Response`). Eviction is bounded by
+     *   `maxPersistenceTtlMs` only — not by HTTP expiration.
+     *
+     * In both modes the eviction primitive IS invoked; what differs between
+     * modes is the delay value passed to it. This option works in conjunction
+     * with `maxPersistenceTtlMs` to determine when entries are evicted from
+     * storage; see `maxPersistenceTtlMs` for the universal ceiling that
+     * applies in both modes.
+     *
+     * @default 'evict'
+     */
+    staleRetention?: 'evict' | 'retain';
+    /**
+     * Maximum time, in milliseconds, that an entry may remain in persistence.
+     * Universal upper bound applied in every `staleRetention` mode. This is
+     * _storage policy, not HTTP freshness_ — it is distinct from
+     * `Cache-Control: max-age` and `Expires:` and is not affected by them. Use
+     * this option to bound how long entries _can_ live in persistence; use
+     * `Cache-Control` on responses to control how long they _should be
+     * considered fresh_.
+     *
+     * Per-mode formulas for the eviction-primitive delay:
+     * - `'evict'`: `min(httpExpiresIn, maxPersistenceTtlMs)`.
+     * - `'retain'`: `maxPersistenceTtlMs`.
+     *
+     * **Backend constraint (Deno KV):** Deno KV's native `expireIn` is capped
+     * at `2_592_000_000` ms (30 days). Values exceeding it are silently
+     * clamped by Deno KV. `maxPersistenceTtlMs` is the requested upper bound,
+     * subject to backend constraints.
+     *
+     * @default 2_592_000_000 (30 days)
+     */
+    maxPersistenceTtlMs?: number;
 }
 
 export interface CachePersistenceMemoryOptions

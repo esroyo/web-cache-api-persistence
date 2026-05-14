@@ -17,7 +17,7 @@ export class CachePersistenceMemory extends CachePersistenceBase
     protected override _options: CachePersistenceMemoryOptions;
 
     constructor(options?: CachePersistenceMemoryOptions) {
-        super();
+        super(options);
         this._options = { ...this._defaultOptions, ...options };
     }
 
@@ -97,12 +97,13 @@ export class CachePersistenceMemory extends CachePersistenceBase
             if (!plainReqRes) {
                 continue;
             }
-            if (this._hasExpired(plainReqRes)) {
+            const expired = this._hasExpired(plainReqRes);
+            if (expired && this._staleRetention === 'evict') {
                 continue;
             }
             yield [
                 this._plainToRequest(plainReqRes),
-                this._plainToResponse(plainReqRes),
+                this._plainToResponse(plainReqRes, { stale: expired }),
             ] as const;
         }
     }
@@ -122,9 +123,13 @@ export class CachePersistenceMemory extends CachePersistenceBase
                 if (!plainReqRes) {
                     continue;
                 }
+                const expired = instance._hasExpired(plainReqRes);
+                if (expired && instance._staleRetention === 'evict') {
+                    continue;
+                }
                 yield [
                     instance._plainToRequest(plainReqRes),
-                    instance._plainToResponse(plainReqRes),
+                    instance._plainToResponse(plainReqRes, { stale: expired }),
                 ] as const;
             }
         })();
@@ -201,7 +206,15 @@ export class CachePersistenceMemory extends CachePersistenceBase
             new Set<string>();
         index.add(persistenceKey);
         this._indexes[indexKey] = index;
-        this._scheduleRemoval(persistenceKey, expiresIn);
+        // The eviction primitive is ALWAYS invoked — what differs between
+        // 'evict' and 'retain' modes is the delay value, computed by
+        // `_evictionDelay`. `expiresIn` is the pure HTTP freshness lifetime
+        // (per `_expiresIn`); `_evictionDelay` applies the storage-policy
+        // clamp / retention override.
+        this._scheduleRemoval(
+            persistenceKey,
+            this._evictionDelay(expiresIn),
+        );
     }
 
     protected _indexKey(

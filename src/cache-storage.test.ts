@@ -67,7 +67,9 @@ Deno.test('CacheStorage', async (t) => {
                 await v1._persistence.put(
                     'v3',
                     new Request('http://localhost/hello'),
-                    new Response('Hello, world!'),
+                    new Response('Hello, world!', {
+                        headers: { 'cache-control': 'max-age=3600' },
+                    }),
                 );
                 assert(await caches.has('v3'));
                 // clean up the simulated pair
@@ -105,7 +107,9 @@ Deno.test('CacheStorage', async (t) => {
                 {
                     const anotherInstance = await caches.open('v1');
                     const request = new Request('http://localhost/hello');
-                    const response = new Response('Hello, world!');
+                    const response = new Response('Hello, world!', {
+                        headers: { 'cache-control': 'max-age=3600' },
+                    });
                     await anotherInstance.put(request, response.clone());
                     const cachedResponses = await anotherInstance.matchAll();
                     assert(cachedResponses.length > 0);
@@ -154,7 +158,9 @@ Deno.test('CacheStorage', async (t) => {
                     await v1._persistence.put(
                         'v3',
                         new Request('http://localhost/hello'),
-                        new Response('Hello, world!'),
+                        new Response('Hello, world!', {
+                            headers: { 'cache-control': 'max-age=3600' },
+                        }),
                     );
                     const cacheNames = await caches.keys();
                     assertEquals(cacheNames.length, 3);
@@ -198,11 +204,15 @@ Deno.test('CacheStorage', async (t) => {
                     const v3 = await caches.open('v3');
                     const request = new Request('http://localhost/hello');
                     {
-                        const response = new Response('Hello, world! #2');
+                        const response = new Response('Hello, world! #2', {
+                            headers: { 'cache-control': 'max-age=3600' },
+                        });
                         await v2.put(request, response.clone());
                     }
                     {
-                        const response = new Response('Hello, world! #3');
+                        const response = new Response('Hello, world! #3', {
+                            headers: { 'cache-control': 'max-age=3600' },
+                        });
                         await v3.put(request, response.clone());
                     }
                     const cachedResponse = await caches.match(request);
@@ -231,7 +241,9 @@ Deno.test('Cache', async (t) => {
             async () => {
                 const cache = await caches.open(cacheName);
                 const request = new Request('http://localhost/hello');
-                const response = new Response('Hello, world!');
+                const response = new Response('Hello, world!', {
+                    headers: { 'cache-control': 'max-age=3600' },
+                });
                 await cache.put(request, response.clone());
                 const cachedResponse = await cache.match(request);
                 assertEquals(await cachedResponse?.text(), 'Hello, world!');
@@ -245,7 +257,9 @@ Deno.test('Cache', async (t) => {
             async () => {
                 const cache = await caches.open(cacheName);
                 const request = new URL('http://localhost/hello');
-                const response = new Response('Hello, world!');
+                const response = new Response('Hello, world!', {
+                    headers: { 'cache-control': 'max-age=3600' },
+                });
                 await cache.put(request, response.clone());
                 const cachedResponse = await cache.match(request);
                 assertEquals(await cachedResponse?.text(), 'Hello, world!');
@@ -259,7 +273,9 @@ Deno.test('Cache', async (t) => {
             async () => {
                 const cache = await caches.open(cacheName);
                 const request = 'http://localhost/hello';
-                const response = new Response('Hello, world!');
+                const response = new Response('Hello, world!', {
+                    headers: { 'cache-control': 'max-age=3600' },
+                });
                 await cache.put(request, response.clone());
                 const cachedResponse = await cache.match(request);
                 assertEquals(await cachedResponse?.text(), 'Hello, world!');
@@ -277,7 +293,9 @@ Deno.test('Cache', async (t) => {
                         const request = new Request(
                             `data:text/plain;base64,${btoa('ping')}`,
                         );
-                        const response = new Response('Hello, world!');
+                        const response = new Response('Hello, world!', {
+                            headers: { 'cache-control': 'max-age=3600' },
+                        });
                         await cache.put(request, response.clone());
                     },
                     TypeError,
@@ -297,7 +315,9 @@ Deno.test('Cache', async (t) => {
                         const request = new Request('http://localhost/hello', {
                             method: 'POST',
                         });
-                        const response = new Response('Hello, world!');
+                        const response = new Response('Hello, world!', {
+                            headers: { 'cache-control': 'max-age=3600' },
+                        });
                         await cache.put(request, response.clone());
                     },
                     TypeError,
@@ -336,7 +356,10 @@ Deno.test('Cache', async (t) => {
                     async () => {
                         const request = new Request('http://localhost/hello');
                         const response = new Response('Hello, world!', {
-                            headers: { 'vary': ' * ' },
+                            headers: {
+                                'vary': ' * ',
+                                'cache-control': 'max-age=3600',
+                            },
                         });
                         await cache.put(request, response.clone());
                     },
@@ -355,7 +378,9 @@ Deno.test('Cache', async (t) => {
                 assertRejects(
                     async () => {
                         const request = new Request('http://localhost/hello');
-                        const response = new Response('Hello, world!');
+                        const response = new Response('Hello, world!', {
+                            headers: { 'cache-control': 'max-age=3600' },
+                        });
                         await response.text();
                         await cache.put(request, response);
                     },
@@ -374,7 +399,9 @@ Deno.test('Cache', async (t) => {
                 const requestWithHash = new Request(
                     'http://localhost/hello#title',
                 );
-                const response = new Response('Hello, world! #1');
+                const response = new Response('Hello, world! #1', {
+                    headers: { 'cache-control': 'max-age=3600' },
+                });
                 await cache.put(requestWithHash, response.clone());
                 {
                     const cachedResponse = await cache.match(requestWithHash);
@@ -387,7 +414,9 @@ Deno.test('Cache', async (t) => {
                 const requestWithAnotherHash = new Request(
                     'http://localhost/hello#content',
                 );
-                const updatedResponse = new Response('Hello, world! #2');
+                const updatedResponse = new Response('Hello, world! #2', {
+                    headers: { 'cache-control': 'max-age=3600' },
+                });
                 await cache.put(
                     requestWithAnotherHash,
                     updatedResponse.clone(),
@@ -420,7 +449,9 @@ Deno.test('Cache', async (t) => {
                 const requestWithHash = new Request(
                     'http://localhost/hello#title',
                 );
-                const response = new Response('Hello, world! #1');
+                const response = new Response('Hello, world! #1', {
+                    headers: { 'cache-control': 'max-age=3600' },
+                });
                 await cache.put(requestWithHash, response.clone());
                 {
                     const cachedResponse = await cache.match(requestWithHash);
@@ -433,7 +464,9 @@ Deno.test('Cache', async (t) => {
                 const requestNotMatching = new Request(
                     'http://localhost/hello?foo',
                 );
-                const anotherResponse = new Response('Hello, world! #2');
+                const anotherResponse = new Response('Hello, world! #2', {
+                    headers: { 'cache-control': 'max-age=3600' },
+                });
                 await cache.put(requestNotMatching, anotherResponse.clone());
                 {
                     const cachedResponse = await cache.match(
@@ -614,7 +647,9 @@ Deno.test('Cache', async (t) => {
                     await cache.put(request, response.clone());
                 }
                 {
-                    const response = new Response('Hello, world!');
+                    const response = new Response('Hello, world!', {
+                        headers: { 'cache-control': 'max-age=3600' },
+                    });
                     await cache.put(request, response.clone());
                 }
                 assertEquals((await cache.matchAll(request)).length, 1);
@@ -655,12 +690,16 @@ Deno.test('Cache', async (t) => {
                 const cache = await caches.open(cacheName);
                 const request = new Request('http://localhost/hello');
                 {
-                    const response = new Response('Hello, world! #1');
+                    const response = new Response('Hello, world! #1', {
+                        headers: { 'cache-control': 'max-age=3600' },
+                    });
                     await cache.put(request, response.clone());
                 }
                 {
                     const request = new Request('http://localhost/hello?foo');
-                    const response = new Response('Hello, world! #2');
+                    const response = new Response('Hello, world! #2', {
+                        headers: { 'cache-control': 'max-age=3600' },
+                    });
                     await cache.put(request, response.clone());
                 }
                 const cachedResponse = await cache.match(request, {
@@ -700,7 +739,9 @@ Deno.test('Cache', async (t) => {
                 async () => {
                     const cache = await caches.open(cacheName);
                     const request = new Request('http://localhost/hello');
-                    const response = new Response('Hello, world!');
+                    const response = new Response('Hello, world!', {
+                        headers: { 'cache-control': 'max-age=3600' },
+                    });
                     await cache.put(request, response.clone());
                     const cachedResponses = await cache.matchAll(request);
                     assertEquals(
@@ -717,7 +758,9 @@ Deno.test('Cache', async (t) => {
                 async () => {
                     const cache = await caches.open(cacheName);
                     const request = new URL('http://localhost/hello');
-                    const response = new Response('Hello, world!');
+                    const response = new Response('Hello, world!', {
+                        headers: { 'cache-control': 'max-age=3600' },
+                    });
                     await cache.put(request, response.clone());
                     const cachedResponses = await cache.matchAll(request);
                     assertEquals(
@@ -734,7 +777,9 @@ Deno.test('Cache', async (t) => {
                 async () => {
                     const cache = await caches.open(cacheName);
                     const request = 'http://localhost/hello';
-                    const response = new Response('Hello, world!');
+                    const response = new Response('Hello, world!', {
+                        headers: { 'cache-control': 'max-age=3600' },
+                    });
                     await cache.put(request, response.clone());
                     const cachedResponses = await cache.matchAll(request);
                     assertEquals(
@@ -773,7 +818,9 @@ Deno.test('Cache', async (t) => {
                 async () => {
                     const cache = await caches.open(cacheName);
                     const request = new Request('http://localhost/hello');
-                    const response = new Response('Hello, world!');
+                    const response = new Response('Hello, world!', {
+                        headers: { 'cache-control': 'max-age=3600' },
+                    });
                     await cache.put(request, response.clone());
                     const cachedResponse = await cache.match(request);
                     const age = Number(cachedResponse?.headers.get('age'));
@@ -789,7 +836,10 @@ Deno.test('Cache', async (t) => {
                     const cache = await caches.open(cacheName);
                     const request = new Request('http://localhost/hello');
                     const response = new Response('Hello, world!', {
-                        headers: { 'Age': '10' },
+                        headers: {
+                            'Age': '10',
+                            'cache-control': 'max-age=3600',
+                        },
                     });
                     await cache.put(request, response.clone());
                     await new Promise((res) => {
@@ -823,7 +873,9 @@ Deno.test('Cache', async (t) => {
                     const cache = await caches.open(cacheName);
                     {
                         const request = new Request('http://localhost/hello');
-                        const response = new Response('Hello, world!');
+                        const response = new Response('Hello, world!', {
+                            headers: { 'cache-control': 'max-age=3600' },
+                        });
                         await cache.put(request, response.clone());
                     }
                     const request = new Request('http://localhost/hello', {
@@ -848,8 +900,12 @@ Deno.test('Cache', async (t) => {
                     const requestContent = new Request(
                         'http://localhost/hello#content',
                     );
-                    const response = new Response('Hello, world! #1');
-                    const responseAlt = new Response('Hello, world! #2');
+                    const response = new Response('Hello, world! #1', {
+                        headers: { 'cache-control': 'max-age=3600' },
+                    });
+                    const responseAlt = new Response('Hello, world! #2', {
+                        headers: { 'cache-control': 'max-age=3600' },
+                    });
                     await cache.put(requestTitle, response.clone());
                     await cache.put(requestContent, responseAlt.clone());
                     const cachedResponsesTitle = await cache.matchAll(
@@ -877,7 +933,9 @@ Deno.test('Cache', async (t) => {
                     const cache = await caches.open(cacheName);
                     {
                         const request = new Request('http://localhost/hello');
-                        const response = new Response('Hello, world!');
+                        const response = new Response('Hello, world!', {
+                            headers: { 'cache-control': 'max-age=3600' },
+                        });
                         await cache.put(request, response.clone());
                     }
                     const request = new Request('http://localhost/hello?foo');
@@ -894,7 +952,9 @@ Deno.test('Cache', async (t) => {
                     const cache = await caches.open(cacheName);
                     {
                         const request = new Request('http://localhost/hello');
-                        const response = new Response('Hello, world!');
+                        const response = new Response('Hello, world!', {
+                            headers: { 'cache-control': 'max-age=3600' },
+                        });
                         await cache.put(request, response.clone());
                     }
                     const request = new Request('http://localhost/hello?foo');
@@ -916,7 +976,10 @@ Deno.test('Cache', async (t) => {
                             headers: { 'accept-encoding': 'deflate' },
                         });
                         const response = new Response('Hello, world!', {
-                            headers: { 'vary': 'Accept-Encoding' },
+                            headers: {
+                                'vary': 'Accept-Encoding',
+                                'cache-control': 'max-age=3600',
+                            },
                         });
                         await cache.put(request, response.clone());
                     }
@@ -939,7 +1002,10 @@ Deno.test('Cache', async (t) => {
                             headers: { 'accept-encoding': 'deflate' },
                         });
                         const response = new Response('Hello, world!', {
-                            headers: { 'vary': 'accept-encoding' },
+                            headers: {
+                                'vary': 'accept-encoding',
+                                'cache-control': 'max-age=3600',
+                            },
                         });
                         await cache.put(request, response.clone());
                     }
@@ -962,7 +1028,10 @@ Deno.test('Cache', async (t) => {
                             headers: { 'user-agent': 'firefox1' },
                         });
                         const response = new Response('Hello, world!', {
-                            headers: { 'vary': 'accept-encoding, user-agent' },
+                            headers: {
+                                'vary': 'accept-encoding, user-agent',
+                                'cache-control': 'max-age=3600',
+                            },
                         });
                         await cache.put(request, response.clone());
                     }
@@ -985,7 +1054,10 @@ Deno.test('Cache', async (t) => {
                             headers: { 'accept-encoding': 'deflate' },
                         });
                         const response = new Response('Hello, world!', {
-                            headers: { 'vary': 'accept-encoding' },
+                            headers: {
+                                'vary': 'accept-encoding',
+                                'cache-control': 'max-age=3600',
+                            },
                         });
                         await cache.put(request, response.clone());
                     }
@@ -1007,12 +1079,16 @@ Deno.test('Cache', async (t) => {
                     const cache = await caches.open(cacheName);
                     {
                         const request = new Request('http://localhost/hello');
-                        const response = new Response('Hello, world!');
+                        const response = new Response('Hello, world!', {
+                            headers: { 'cache-control': 'max-age=3600' },
+                        });
                         await cache.put(request, response.clone());
                     }
                     {
                         const request = new Request('http://localhost/another');
-                        const response = new Response('Hello, world!');
+                        const response = new Response('Hello, world!', {
+                            headers: { 'cache-control': 'max-age=3600' },
+                        });
                         await cache.put(request, response.clone());
                     }
                     const cachedResponses = await cache.matchAll();
@@ -1030,7 +1106,9 @@ Deno.test('Cache', async (t) => {
             async () => {
                 const cache = await caches.open(cacheName);
                 const request = new Request('http://localhost/hello');
-                const response = new Response('Hello, world!');
+                const response = new Response('Hello, world!', {
+                    headers: { 'cache-control': 'max-age=3600' },
+                });
                 await cache.put(request, response.clone());
                 assert(await cache.delete(request));
                 await caches.delete(cacheName);
@@ -1043,7 +1121,9 @@ Deno.test('Cache', async (t) => {
             async () => {
                 const cache = await caches.open(cacheName);
                 const request = new URL('http://localhost/hello');
-                const response = new Response('Hello, world!');
+                const response = new Response('Hello, world!', {
+                    headers: { 'cache-control': 'max-age=3600' },
+                });
                 await cache.put(request, response.clone());
                 assert(await cache.delete(request));
                 await caches.delete(cacheName);
@@ -1056,7 +1136,9 @@ Deno.test('Cache', async (t) => {
             async () => {
                 const cache = await caches.open(cacheName);
                 const request = 'http://localhost/hello';
-                const response = new Response('Hello, world!');
+                const response = new Response('Hello, world!', {
+                    headers: { 'cache-control': 'max-age=3600' },
+                });
                 await cache.put(request, response.clone());
                 assert(await cache.delete(request));
                 await caches.delete(cacheName);
@@ -1078,7 +1160,9 @@ Deno.test('Cache', async (t) => {
                 const cache = await caches.open(cacheName);
                 {
                     const request = new Request('http://localhost/hello');
-                    const response = new Response('Hello, world!');
+                    const response = new Response('Hello, world!', {
+                        headers: { 'cache-control': 'max-age=3600' },
+                    });
                     await cache.put(request, response.clone());
                 }
                 const request = new Request('http://localhost/hello', {
@@ -1098,7 +1182,9 @@ Deno.test('Cache', async (t) => {
                 const cache = await caches.open(cacheName);
                 {
                     const request = new Request('http://localhost/hello');
-                    const response = new Response('Hello, world!');
+                    const response = new Response('Hello, world!', {
+                        headers: { 'cache-control': 'max-age=3600' },
+                    });
                     await cache.put(request, response.clone());
                 }
                 const request = new Request('http://localhost/hello', {
@@ -1116,7 +1202,9 @@ Deno.test('Cache', async (t) => {
                 const cache = await caches.open(cacheName);
                 {
                     const request = new Request('http://localhost/hello');
-                    const response = new Response('Hello, world!');
+                    const response = new Response('Hello, world!', {
+                        headers: { 'cache-control': 'max-age=3600' },
+                    });
                     await cache.put(request, response.clone());
                 }
                 const request = new Request('http://localhost/hello?foo');
@@ -1134,7 +1222,9 @@ Deno.test('Cache', async (t) => {
                 const cache = await caches.open(cacheName);
                 {
                     const request = new Request('http://localhost/hello');
-                    const response = new Response('Hello, world!');
+                    const response = new Response('Hello, world!', {
+                        headers: { 'cache-control': 'max-age=3600' },
+                    });
                     await cache.put(request, response.clone());
                 }
                 const request = new Request('http://localhost/hello?foo');
@@ -1154,7 +1244,10 @@ Deno.test('Cache', async (t) => {
                         headers: { 'accept-encoding': 'deflate' },
                     });
                     const response = new Response('Hello, world!', {
-                        headers: { 'vary': 'accept-encoding' },
+                        headers: {
+                            'vary': 'accept-encoding',
+                            'cache-control': 'max-age=3600',
+                        },
                     });
                     await cache.put(request, response.clone());
                 }
@@ -1178,7 +1271,10 @@ Deno.test('Cache', async (t) => {
                         headers: { 'user-agent': 'firefox1' },
                     });
                     const response = new Response('Hello, world!', {
-                        headers: { 'vary': 'accept-encoding,user-agent' },
+                        headers: {
+                            'vary': 'accept-encoding,user-agent',
+                            'cache-control': 'max-age=3600',
+                        },
                     });
                     await cache.put(request, response.clone());
                 }
@@ -1202,7 +1298,10 @@ Deno.test('Cache', async (t) => {
                         headers: { 'accept-encoding': 'deflate' },
                     });
                     const response = new Response('Hello, world!', {
-                        headers: { 'vary': 'accept-encoding' },
+                        headers: {
+                            'vary': 'accept-encoding',
+                            'cache-control': 'max-age=3600',
+                        },
                     });
                     await cache.put(request, response.clone());
                 }
@@ -1222,12 +1321,16 @@ Deno.test('Cache', async (t) => {
                 const cache = await caches.open(cacheName);
                 {
                     const request = new Request('http://localhost/hello?foo');
-                    const response = new Response('Hello, world! #1');
+                    const response = new Response('Hello, world! #1', {
+                        headers: { 'cache-control': 'max-age=3600' },
+                    });
                     await cache.put(request, response.clone());
                 }
                 {
                     const request = new Request('http://localhost/hello');
-                    const response = new Response('Hello, world! #2');
+                    const response = new Response('Hello, world! #2', {
+                        headers: { 'cache-control': 'max-age=3600' },
+                    });
                     await cache.put(request, response.clone());
                 }
                 const request = new Request('http://localhost/hello?foo');
@@ -1255,7 +1358,13 @@ Deno.test('Cache', async (t) => {
                         globalThis,
                         'fetch',
                         returnsNext([
-                            Promise.resolve(new Response('Fetched!')),
+                            Promise.resolve(
+                                new Response('Fetched!', {
+                                    headers: {
+                                        'cache-control': 'max-age=3600',
+                                    },
+                                }),
+                            ),
                         ]),
                     );
                     const url = 'http://localhost/hello';
@@ -1285,8 +1394,20 @@ Deno.test('Cache', async (t) => {
                         globalThis,
                         'fetch',
                         returnsNext([
-                            Promise.resolve(new Response('Fetched!')),
-                            Promise.resolve(new Response('Fetched 2!')),
+                            Promise.resolve(
+                                new Response('Fetched!', {
+                                    headers: {
+                                        'cache-control': 'max-age=3600',
+                                    },
+                                }),
+                            ),
+                            Promise.resolve(
+                                new Response('Fetched 2!', {
+                                    headers: {
+                                        'cache-control': 'max-age=3600',
+                                    },
+                                }),
+                            ),
                         ]),
                     );
                     const urls = [
@@ -1326,11 +1447,15 @@ Deno.test('Cache', async (t) => {
                     const cache = await caches.open(cacheName);
                     {
                         const request = new Request('http://localhost/hello');
-                        const response = new Response('Hello');
+                        const response = new Response('Hello', {
+                            headers: { 'cache-control': 'max-age=3600' },
+                        });
                         await cache.put(request, response.clone());
                     }
                     const request = new Request('http://localhost/world');
-                    const response = new Response('World');
+                    const response = new Response('World', {
+                        headers: { 'cache-control': 'max-age=3600' },
+                    });
                     await cache.put(request, response.clone());
                     const cachedRequests = await cache.keys(request);
                     assertEquals(cachedRequests.length, 1);
@@ -1349,12 +1474,16 @@ Deno.test('Cache', async (t) => {
                     const cache = await caches.open(cacheName);
                     {
                         const request = new Request('http://localhost/hello');
-                        const response = new Response('Hello');
+                        const response = new Response('Hello', {
+                            headers: { 'cache-control': 'max-age=3600' },
+                        });
                         await cache.put(request, response.clone());
                     }
                     {
                         const request = new Request('http://localhost/world');
-                        const response = new Response('World');
+                        const response = new Response('World', {
+                            headers: { 'cache-control': 'max-age=3600' },
+                        });
                         await cache.put(request, response.clone());
                     }
                     const cachedRequests = await cache.keys();
@@ -1379,9 +1508,13 @@ Deno.test('Cache', async (t) => {
         ignore, // Not possible to control this in native implementations
         fn: async (t) => {
             const requestOne = new Request('http://localhost/hello');
-            const responseOne = new Response('Hello, world! #1');
+            const responseOne = new Response('Hello, world! #1', {
+                headers: { 'cache-control': 'max-age=3600' },
+            });
             const requestTwo = new Request('http://localhost/hello?foo');
-            const responseTwo = new Response('Hello, world! #2');
+            const responseTwo = new Response('Hello, world! #2', {
+                headers: { 'cache-control': 'max-age=3600' },
+            });
             {
                 const cache = await caches.open(cacheName);
                 // A couple of floating "put" operation

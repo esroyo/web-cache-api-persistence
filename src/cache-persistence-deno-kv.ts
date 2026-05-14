@@ -27,7 +27,7 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
     }
 
     constructor(options?: CachePersistenceDenoKvOptions) {
-        super();
+        super(options);
         this._options = { ...this._defaultOptions, ...options };
         this._dbPool = createPool<Deno.Kv>({
             create: async () => Deno.openKv(this._options.path),
@@ -112,12 +112,13 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
             if (!plainReqRes) {
                 continue;
             }
-            if (this._hasExpired(plainReqRes)) {
+            const expired = this._hasExpired(plainReqRes);
+            if (expired && this._staleRetention === 'evict') {
                 continue;
             }
             yield [
                 this._plainToRequest(plainReqRes),
-                this._plainToResponse(plainReqRes),
+                this._plainToResponse(plainReqRes, { stale: expired }),
             ] as const;
         }
     }
@@ -137,9 +138,13 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
                 if (!plainReqRes) {
                     continue;
                 }
+                const expired = instance._hasExpired(plainReqRes);
+                if (expired && instance._staleRetention === 'evict') {
+                    continue;
+                }
                 yield [
                     instance._plainToRequest(plainReqRes),
-                    instance._plainToResponse(plainReqRes),
+                    instance._plainToResponse(plainReqRes, { stale: expired }),
                 ] as const;
             }
         })();
@@ -202,7 +207,7 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
             .check(indexRes)
             .deleteBlob(key);
         if (index.size) {
-            op.set(indexKey, index, { expireIn: this._maxExpireIn });
+            op.set(indexKey, index, { expireIn: this._maxPersistenceTtlMs });
         } else {
             op.delete(indexKey);
         }
@@ -220,10 +225,23 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
         const indexRes = await client.get<Set<string>>(indexKey);
         const index = indexRes.value || new Set<string>();
         index.add(this._joinKey(key));
+        // The value-blob's `expireIn` is determined by `_evictionDelay`:
+        // under `'evict'` it is `min(httpExpiresIn, maxPersistenceTtlMs)`;
+        // under `'retain'` it is `maxPersistenceTtlMs`. The eviction
+        // primitive (Deno KV's native `expireIn`) is ALWAYS invoked — only
+        // the value changes between modes.
+        //
+        // The index-collection continues to use `_maxPersistenceTtlMs`
+        // directly: it represents the upper bound on index lifetime, which
+        // is invariant under retention mode (and matches pre-change
+        // behavior since `_maxExpireIn` was the prior name for the same
+        // constant).
         await batchedAtomic(client)
             .check(indexRes)
-            .set(indexKey, index, { expireIn: this._maxExpireIn })
-            .setBlob(key, this._serialize(value), { expireIn })
+            .set(indexKey, index, { expireIn: this._maxPersistenceTtlMs })
+            .setBlob(key, this._serialize(value), {
+                expireIn: this._evictionDelay(expireIn),
+            })
             .commit();
         await this._dbPool.release(client);
     }

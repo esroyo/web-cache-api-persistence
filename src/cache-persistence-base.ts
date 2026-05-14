@@ -13,8 +13,26 @@ import type {
 
 export abstract class CachePersistenceBase {
     protected _decoder: TextDecoder = new TextDecoder();
-    protected _maxExpireIn: number =
+    /**
+     * Maximum time, in milliseconds, that an entry may remain in persistence.
+     * Universal upper bound applied in every `staleRetention` mode and across
+     * all bundled backends.
+     *
+     * This field is the storage-policy ceiling. It is distinct from HTTP
+     * freshness (`_expiresIn(response)` is pure HTTP semantics and does NOT
+     * read this field). Storage-lifetime clamping lives in
+     * `_evictionDelay(httpExpiresIn)`.
+     *
+     * Initialised from `options.maxPersistenceTtlMs` in the base constructor.
+     * Subclasses that pre-set this field at their declaration site or in
+     * their own constructor continue to work: the base constructor only
+     * overrides it when `options.maxPersistenceTtlMs` is explicitly provided.
+     *
+     * @default 2_592_000_000 (30 days)
+     */
+    protected _maxPersistenceTtlMs: number =
         2_592_000_000; /* 1000 * 60 * 60 * 24 * 30 */
+    protected _staleRetention: 'evict' | 'retain' = 'evict';
     protected _encoder: TextEncoder = new TextEncoder();
     protected _counter: Record<number, number> = Object.create(null);
     protected _hasherPromise: Promise<Hasher> = create3();
@@ -24,7 +42,20 @@ export abstract class CachePersistenceBase {
     });
     protected _options: CachePersistenceBaseOptions = {};
     protected get _defaultOptions(): CachePersistenceBaseOptions {
-        return { compress: false };
+        return {
+            compress: false,
+            staleRetention: 'evict',
+            maxPersistenceTtlMs: 2_592_000_000,
+        };
+    }
+
+    constructor(options?: CachePersistenceBaseOptions) {
+        if (options?.staleRetention !== undefined) {
+            this._staleRetention = options.staleRetention;
+        }
+        if (options?.maxPersistenceTtlMs !== undefined) {
+            this._maxPersistenceTtlMs = options.maxPersistenceTtlMs;
+        }
     }
 
     protected _created(): readonly [number, number] {
@@ -87,7 +118,19 @@ export abstract class CachePersistenceBase {
         return (await this._hasherPromise).hash(reqUrl, 'hex') as string;
     }
 
-    /** Calculate the milliseconds left for this response to expire */
+    /**
+     * Calculate the milliseconds left for this response to expire, per pure
+     * HTTP freshness semantics (RFC 9111 §4.2.1).
+     *
+     * Returns `Math.round(msLeft)` for responses with `Cache-Control: max-age`
+     * / `s-maxage` (s-maxage takes priority) or `Expires`. Returns `0` for
+     * responses with neither — such responses have no explicit freshness
+     * lifetime per RFC 9111 §4.2.1.
+     *
+     * This method represents pure HTTP semantics: it does NOT clamp at
+     * `_maxPersistenceTtlMs`. Storage-lifetime clamping is the responsibility
+     * of `_evictionDelay()`.
+     */
     protected _expiresIn(
         response: Response,
     ): number {
@@ -118,7 +161,7 @@ export abstract class CachePersistenceBase {
                             (+value - correctedReceivedAge) * 1000,
                             0,
                         );
-                        return Math.min(Math.round(msLeft), this._maxExpireIn);
+                        return Math.round(msLeft);
                     }
                 }
             }
@@ -127,13 +170,41 @@ export abstract class CachePersistenceBase {
         if (expireDate) {
             const expireEpochMs = new Date(expireDate).getTime();
             const msLeft = Math.max(expireEpochMs - now, 0);
-            return Math.min(Math.round(msLeft), this._maxExpireIn);
+            return Math.round(msLeft);
         }
-        return this._maxExpireIn;
+        return 0;
     }
 
     protected _hasExpired(meta: PlainReqResMeta): boolean {
-        return Date.now() > +meta.expires;
+        // Use `>=` so a header-less response (which gets
+        // `expires === created`) is correctly classified as stale on the
+        // very first read, even when `put` and `get` land in the same
+        // millisecond. RFC 9111 §4.2.1: no explicit freshness directive
+        // means no explicit freshness lifetime; under this library that
+        // translates to "stale on arrival" rather than "fresh for one
+        // millisecond".
+        return Date.now() >= +meta.expires;
+    }
+
+    /**
+     * Compute the eviction-primitive delay for a given HTTP-derived
+     * freshness lifetime.
+     *
+     * - Under `'evict'`: `min(httpExpiresIn, maxPersistenceTtlMs)`. Entries
+     *   are removed at the earlier of HTTP expiration or the storage
+     *   ceiling.
+     * - Under `'retain'`: `maxPersistenceTtlMs`. HTTP expiration does not
+     *   shorten storage lifetime; the eviction primitive fires only at the
+     *   ceiling.
+     *
+     * Storage-policy clamping lives here, not in `_expiresIn()`. The
+     * eviction primitive is ALWAYS invoked in both modes — only the delay
+     * value differs.
+     */
+    protected _evictionDelay(httpExpiresIn: number): number {
+        return this._staleRetention === 'evict'
+            ? Math.min(httpExpiresIn, this._maxPersistenceTtlMs)
+            : this._maxPersistenceTtlMs;
     }
 
     protected _plainToRequest({
@@ -150,14 +221,17 @@ export abstract class CachePersistenceBase {
         );
     }
 
-    protected _plainToResponse({
-        created,
-        id,
-        resBody,
-        resHeaders,
-        resStatus,
-        resStatusText,
-    }: PlainRes & PlainReqResMeta): Response {
+    protected _plainToResponse(
+        {
+            created,
+            id,
+            resBody,
+            resHeaders,
+            resStatus,
+            resStatusText,
+        }: PlainRes & PlainReqResMeta,
+        options?: { stale?: boolean },
+    ): Response {
         const now = Date.now();
         const age = Math.ceil((now - Number(created.split('-')[0])) / 1000);
         const upstreamAge =
@@ -172,6 +246,9 @@ export abstract class CachePersistenceBase {
         );
         cachedResponse.headers.set('age', String(age + upstreamAge));
         cachedResponse.headers.set('x-cachestorage-id', id);
+        if (options?.stale === true) {
+            cachedResponse.headers.set('x-cachestorage-stale', '1');
+        }
         return cachedResponse;
     }
 
@@ -200,7 +277,13 @@ export abstract class CachePersistenceBase {
         response: Response,
     ): Promise<[PlainReqRes, expiresIn: number] | null> {
         const expiresIn = this._expiresIn(response);
-        if (expiresIn <= 0) {
+        // Under `'evict'`, a response without explicit HTTP freshness (per
+        // RFC 9111 §4.2.1, `_expiresIn` returns 0) is not stored — there is
+        // no freshness signal to justify caching. Under `'retain'`, the
+        // entry IS stored: the application opted into retention and may
+        // consult `x-cachestorage-stale` to decide what to do with the
+        // immediately-stale entry.
+        if (expiresIn <= 0 && this._staleRetention === 'evict') {
             return null;
         }
 

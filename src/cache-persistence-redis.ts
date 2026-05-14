@@ -31,7 +31,7 @@ export class CachePersistenceRedis extends CachePersistenceBase
     }
 
     constructor(options?: CachePersistenceRedisOptions) {
-        super();
+        super(options);
         this._options = { ...this._defaultOptions, ...options };
         this._dbPool = createPool<Redis>({
             create: async () => {
@@ -145,12 +145,13 @@ export class CachePersistenceRedis extends CachePersistenceBase
                 if (!plainReqRes) {
                     continue;
                 }
-                if (this._hasExpired(plainReqRes)) {
+                const expired = this._hasExpired(plainReqRes);
+                if (expired && this._staleRetention === 'evict') {
                     continue;
                 }
                 yield [
                     this._plainToRequest(plainReqRes),
-                    this._plainToResponse(plainReqRes),
+                    this._plainToResponse(plainReqRes, { stale: expired }),
                 ] as const;
             }
         }
@@ -171,9 +172,13 @@ export class CachePersistenceRedis extends CachePersistenceBase
                 if (!plainReqRes) {
                     continue;
                 }
+                const expired = instance._hasExpired(plainReqRes);
+                if (expired && instance._staleRetention === 'evict') {
+                    continue;
+                }
                 yield [
                     instance._plainToRequest(plainReqRes),
-                    instance._plainToResponse(plainReqRes),
+                    instance._plainToResponse(plainReqRes, { stale: expired }),
                 ] as const;
             }
         })();
@@ -304,8 +309,18 @@ export class CachePersistenceRedis extends CachePersistenceBase
         const indexKey = this._indexKey(key);
         const client = await this._dbPool.acquire();
         const pipeline = client.pipeline();
+        // The value-blob PEXPIRE delay is determined by `_evictionDelay`:
+        // under `'evict'` it's `min(httpExpiresIn, maxPersistenceTtlMs)`;
+        // under `'retain'` it's `maxPersistenceTtlMs` (HTTP expiration does
+        // not shorten storage lifetime). The eviction primitive is ALWAYS
+        // invoked — only the delay value differs.
+        //
+        // The index's PEXPIRE is kept aligned with the value-blob's
+        // (capped at `maxPersistenceTtlMs`), preserving prior semantics
+        // where the index lives at least as long as any value-blob in it.
+        const evictionDelay = this._evictionDelay(expiresIn);
         pipeline.sendCommand('SET', [effectiveKey, this._serialize(value)]);
-        pipeline.sendCommand('PEXPIRE', [effectiveKey, expiresIn]);
+        pipeline.sendCommand('PEXPIRE', [effectiveKey, evictionDelay]);
         pipeline.sendCommand('ZADD', [
             indexKey,
             +(+created[0] * 1000 + created[1]),
@@ -313,7 +328,7 @@ export class CachePersistenceRedis extends CachePersistenceBase
         ]);
         pipeline.sendCommand('PEXPIRE', [
             indexKey,
-            Math.min(expiresIn, this._maxExpireIn),
+            evictionDelay,
             'GT',
         ]);
         await pipeline.flush();

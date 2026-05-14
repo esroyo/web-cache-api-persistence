@@ -1,6 +1,27 @@
-import type { CachePersistenceLike } from './types.ts';
+import type {
+    CachePersistenceBaseOptions,
+    CachePersistenceLike,
+} from './types.ts';
 
+/**
+ * A no-op persistence implementation. Stores nothing; logs each call.
+ *
+ * Accepts `CachePersistenceBaseOptions` (including `staleRetention` and
+ * `maxPersistenceTtlMs`) for configuration-surface uniformity, but ignores
+ * them because nothing is stored — neither retention policy nor
+ * storage-lifetime ceiling has any observable effect.
+ */
 export class CachePersistenceNoop implements CachePersistenceLike {
+    constructor(_options?: CachePersistenceBaseOptions) {
+        // Options are accepted for configuration-surface uniformity but ignored
+        // because the noop stores nothing.
+    }
+
+    async keys(): Promise<string[]> {
+        console.log({ method: 'keys' }, `\n${'-'.repeat(80)}`);
+        return [];
+    }
+
     async put(
         cacheName: string,
         request: Request,
@@ -10,7 +31,7 @@ export class CachePersistenceNoop implements CachePersistenceLike {
             { method: 'put', cacheName, request, response },
             `\n${'-'.repeat(80)}`,
         );
-        return true;
+        return false;
     }
 
     async delete(
@@ -45,9 +66,9 @@ export class CachePersistenceNoop implements CachePersistenceLike {
         return (async function* () {})();
     }
 
-    async [Symbol.asyncDispose](cacheName: string): Promise<void> {
+    async [Symbol.asyncDispose](): Promise<void> {
         console.log(
-            { method: '[[Symbol.asyncDispose]]', cacheName },
+            { method: '[[Symbol.asyncDispose]]' },
             `\n${'-'.repeat(80)}`,
         );
     }
