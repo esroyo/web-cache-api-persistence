@@ -136,3 +136,4 @@ dist
 main.ts
 tmp
 redis-up.ts
+.opencode
