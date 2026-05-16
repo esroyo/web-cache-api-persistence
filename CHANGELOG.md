@@ -104,6 +104,13 @@ for commit guidelines.
   9111 §4.2.1 by treating header-less responses as having no explicit freshness
   lifetime.
 
+## [0.3.2](https://github.com/esroyo/web-cache-api-persistence/compare/v0.3.1...v0.3.2) (2026-05-16)
+
+
+### Bug Fixes
+
+* release redis pool client before _dbDel in _dbGet to avoid self-deadlock ([71081a1](https://github.com/esroyo/web-cache-api-persistence/commit/71081a131aaefdee86b5923582acdeb8db518e45))
+
 ## [0.3.1](https://github.com/esroyo/web-cache-api-persistence/compare/v0.3.0...v0.3.1) (2025-07-15)
 
 ### Bug Fixes
