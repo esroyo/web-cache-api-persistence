@@ -11,7 +11,7 @@ export async function startRedis({
 }): Promise<TestServer> {
   const path = tempPath(String(port));
   if (!(await exists(path))) {
-    await Deno.mkdir(path);
+    await Deno.mkdir(path, { recursive: true });
   }
 
   // Setup redis.conf
