@@ -1,11 +1,14 @@
-import { CachePersistenceBase } from './cache-persistence-base.ts';
+import { CachePersistenceBase } from '../core/cache-persistence-base.ts';
 import type {
+    CachePersistenceFactory,
     CachePersistenceLike,
     CachePersistenceMemoryOptions,
     PlainReqRes,
-} from './types.ts';
-import * as webidl from './webidl.ts';
+} from '../core/types.ts';
+import * as webidl from '../core/webidl.ts';
 import * as sorted from 'sorted';
+
+export type { CachePersistenceMemoryOptions };
 
 export class CachePersistenceMemory extends CachePersistenceBase
     implements CachePersistenceLike {
@@ -237,3 +240,17 @@ export class CachePersistenceMemory extends CachePersistenceBase
         }, Math.min(expiresIn, this._maxInteger));
     }
 }
+
+/**
+ * Factory for the in-memory persistence backend.
+ *
+ * Returns a {@link CachePersistenceFactory} suitable for
+ * {@link createCacheStorage} or `new CacheStorage(...)`.
+ */
+export function memory(
+    options?: CachePersistenceMemoryOptions,
+): CachePersistenceFactory {
+    return { create: async () => new CachePersistenceMemory(options) };
+}
+
+export default memory;

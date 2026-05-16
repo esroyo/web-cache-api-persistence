@@ -1,14 +1,14 @@
-import { CachePersistenceDenoKv } from './cache-persistence-deno-kv.ts';
-import { CachePersistenceMemory } from './cache-persistence-memory.ts';
-import { CachePersistenceRedis } from './cache-persistence-redis.ts';
-import { CacheStorage } from './cache-storage.ts';
+import { CachePersistenceDenoKv } from '../src/deno-kv/mod.ts';
+import { CachePersistenceMemory } from '../src/memory/mod.ts';
+import { CachePersistenceDenoRedis } from '../src/deno-redis/mod.ts';
+import { CacheStorage } from '../src/core/cache-storage.ts';
 import {
     generateRandomRequest,
     generateRandomResponse,
     nextPort,
     startRedis,
     stopRedis,
-} from './test-utils.ts';
+} from '../src/core/test-utils.ts';
 
 // const port = 6379;
 const port = nextPort();
@@ -16,7 +16,7 @@ const server = await startRedis({ port });
 
 const cachesRedis = new CacheStorage({
     create: async () =>
-        new CachePersistenceRedis({
+        new CachePersistenceDenoRedis({
             port,
             hostname: '127.0.0.1',
             // max: 1,
@@ -107,21 +107,25 @@ Deno.bench(
     },
 );
 
-Deno.bench('CachePersistenceRedis', { group: 'put(req, res)' }, async (b) => {
-    const cache = cacheRedis;
-    const request = generateRandomRequest();
-    const response = generateRandomResponse();
-    b.start();
-    try {
-        await cache.put(request, response);
-    } catch {}
-    b.end();
-    await cache.delete(request, {
-        ignoreMethod: true,
-        ignoreSearch: true,
-        ignoreVary: true,
-    });
-});
+Deno.bench(
+    'CachePersistenceDenoRedis',
+    { group: 'put(req, res)' },
+    async (b) => {
+        const cache = cacheRedis;
+        const request = generateRandomRequest();
+        const response = generateRandomResponse();
+        b.start();
+        try {
+            await cache.put(request, response);
+        } catch {}
+        b.end();
+        await cache.delete(request, {
+            ignoreMethod: true,
+            ignoreSearch: true,
+            ignoreVary: true,
+        });
+    },
+);
 
 Deno.bench('CachePersistenceKv', { group: 'put(req, res)' }, async (b) => {
     const cache = cacheKv;
@@ -169,7 +173,7 @@ Deno.bench(
     },
 );
 
-Deno.bench('CachePersistenceRedis', { group: 'match(req)' }, async (b) => {
+Deno.bench('CachePersistenceDenoRedis', { group: 'match(req)' }, async (b) => {
     const cache = cacheRedis;
     const clean = await fillCache(cache);
     const request = generateRandomRequest();
@@ -221,15 +225,19 @@ Deno.bench(
     },
 );
 
-Deno.bench('CachePersistenceRedis', { group: 'matchAll(req)' }, async (b) => {
-    const cache = cacheRedis;
-    const clean = await fillCache(cache);
-    const request = generateRandomRequest();
-    b.start();
-    await cache.matchAll(request);
-    b.end();
-    await clean();
-});
+Deno.bench(
+    'CachePersistenceDenoRedis',
+    { group: 'matchAll(req)' },
+    async (b) => {
+        const cache = cacheRedis;
+        const clean = await fillCache(cache);
+        const request = generateRandomRequest();
+        b.start();
+        await cache.matchAll(request);
+        b.end();
+        await clean();
+    },
+);
 
 Deno.bench('CachePersistenceKv', { group: 'matchAll(req)' }, async (b) => {
     const cache = cacheKv;
@@ -269,7 +277,7 @@ Deno.bench(
     },
 );
 
-Deno.bench('CachePersistenceRedis', { group: 'matchAll()' }, async (b) => {
+Deno.bench('CachePersistenceDenoRedis', { group: 'matchAll()' }, async (b) => {
     const cache = cacheRedis;
     const clean = await fillCache(cache);
     b.start();
@@ -325,7 +333,7 @@ Deno.bench(
     },
 );
 
-Deno.bench('CachePersistenceRedis', { group: 'delete(req)' }, async (b) => {
+Deno.bench('CachePersistenceDenoRedis', { group: 'delete(req)' }, async (b) => {
     const cache = cacheRedis;
     const clean = await fillCache(cache);
     const request = generateRandomRequest();
@@ -371,7 +379,7 @@ Deno.bench(
     },
 );
 
-Deno.bench('CachePersistenceRedis', { group: 'delete()' }, async (b) => {
+Deno.bench('CachePersistenceDenoRedis', { group: 'delete()' }, async (b) => {
     b.start();
     await cachesRedis.delete('default');
     b.end();

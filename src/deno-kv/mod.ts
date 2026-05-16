@@ -4,12 +4,15 @@ import { batchedAtomic } from '@kitsonk/kv-toolbox/batched_atomic';
 
 import type {
     CachePersistenceDenoKvOptions,
+    CachePersistenceFactory,
     CachePersistenceLike,
     PlainReqRes,
-} from './types.ts';
-import { CachePersistenceBase } from './cache-persistence-base.ts';
-import * as webidl from './webidl.ts';
+} from '../core/types.ts';
+import { CachePersistenceBase } from '../core/cache-persistence-base.ts';
+import * as webidl from '../core/webidl.ts';
 import * as sorted from 'sorted';
+
+export type { CachePersistenceDenoKvOptions };
 
 export class CachePersistenceDenoKv extends CachePersistenceBase
     implements CachePersistenceLike {
@@ -252,3 +255,17 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
         return key.slice(0, 3);
     }
 }
+
+/**
+ * Factory for the Deno KV persistence backend.
+ *
+ * Returns a {@link CachePersistenceFactory} suitable for
+ * {@link createCacheStorage} or `new CacheStorage(...)`.
+ */
+export function denoKv(
+    options?: CachePersistenceDenoKvOptions,
+): CachePersistenceFactory {
+    return { create: async () => new CachePersistenceDenoKv(options) };
+}
+
+export default denoKv;

@@ -1,7 +1,10 @@
 import type {
     CachePersistenceBaseOptions,
+    CachePersistenceFactory,
     CachePersistenceLike,
-} from './types.ts';
+} from '../core/types.ts';
+
+export type { CachePersistenceBaseOptions };
 
 /**
  * A no-op persistence implementation. Stores nothing; logs each call.
@@ -73,3 +76,17 @@ export class CachePersistenceNoop implements CachePersistenceLike {
         );
     }
 }
+
+/**
+ * Factory for the no-op persistence backend.
+ *
+ * Returns a {@link CachePersistenceFactory} suitable for
+ * {@link createCacheStorage} or `new CacheStorage(...)`.
+ */
+export function noop(
+    options?: CachePersistenceBaseOptions,
+): CachePersistenceFactory {
+    return { create: async () => new CachePersistenceNoop(options) };
+}
+
+export default noop;

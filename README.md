@@ -15,24 +15,79 @@ adheres to the standard Cache API defined by the
 We could say It is like a Ponyfill.
 
 ```ts
-import { CacheStorage } from 'jsr:@esroyo/web-cache-api-persistence';
+import { createCacheStorage } from 'jsr:@esroyo/web-cache-api-persistence';
+import memory from 'jsr:@esroyo/web-cache-api-persistence/memory';
 
-const caches = new CacheStorage();
+const caches = createCacheStorage({ persistence: memory() });
 
 // Usage is similar to the native `caches` property of the Window interface
-const cache = await caches.open("my-cache");
+const cache = await caches.open('my-cache');
 
 Deno.serve(async (req) => {
   const cached = await cache.match(req);
   // ...
 ```
 
+Each bundled backend lives under its own sub-path module which exports a default
+factory function (the common case), the persistence class (for advanced use such
+as subclassing or `instanceof` checks), and the options type. Backends are
+imported only via their sub-path so that consumers pay no dependency-resolution
+cost for backends they don't use.
+
 The main goal of the library is to allow to use your own persistence layer,
 while the application code continues depending on the standard Cache interfaces,
 and hopefully remains unaware of the real implementation used.
 
+### Backends
+
+The package ships four backends, each addressable through a flat sub-path:
+
+- `jsr:@esroyo/web-cache-api-persistence/memory` — in-process map; no real
+  persistence, good for tests and ephemeral caches.
+- `jsr:@esroyo/web-cache-api-persistence/noop` — discards everything; useful for
+  benchmarking or disabling caching behind a flag.
+- `jsr:@esroyo/web-cache-api-persistence/deno-kv` — persists through
+  [Deno KV](https://docs.deno.com/deploy/kv/manual/) via
+  [`kv-toolbox`](https://jsr.io/@kitsonk/kv-toolbox); supports arbitrarily large
+  responses.
+- `jsr:@esroyo/web-cache-api-persistence/deno-redis` — persists through the
+  [Deno-native Redis client](https://github.com/denodrivers/redis).
+
+Each sub-path exports the same shape: a default factory (e.g. `denoRedis`), a
+same-identity named factory, the persistence class, and the options type. Pick
+the abstraction level you want from one import path:
+
+```ts
+// Common case: default-imported factory + createCacheStorage.
+import { createCacheStorage } from 'jsr:@esroyo/web-cache-api-persistence';
+import denoRedis from 'jsr:@esroyo/web-cache-api-persistence/deno-redis';
+
+const caches = createCacheStorage({
+    persistence: denoRedis({ port: 6379 }),
+});
+```
+
+```ts
+// Advanced case: named class import (subclassing, instanceof, custom factory).
+import {
+    CachePersistenceDenoRedis,
+    type CachePersistenceDenoRedisOptions,
+} from 'jsr:@esroyo/web-cache-api-persistence/deno-redis';
+import { CacheStorage } from 'jsr:@esroyo/web-cache-api-persistence';
+
+const options: CachePersistenceDenoRedisOptions = { port: 6379 };
+
+const caches = new CacheStorage({
+    create: async () => new CachePersistenceDenoRedis(options),
+});
+```
+
+### Custom persistence (low-level API)
+
 We can use our own persistence layer by implementing the
-[`CachePersistenceLike`](./src/types.ts) interface:
+[`CachePersistenceLike`](./src/core/types.ts) interface. For bundled backends
+the recommended entry point is the per-backend sub-path described above — this
+low-level form is for custom persistence classes:
 
 ```ts
 import {
@@ -135,7 +190,7 @@ export interface CachePersistenceLike {
 ## Headers normalization
 
 It is possible to provide a function to normalize headers by implementing the
-interface [`CacheHeaderNormalizer`](./src/types.ts#L229). Headers normalization
+interface [`CacheHeaderNormalizer`](./src/core/types.ts). Headers normalization
 is key to overcome
 [`Vary`](https://datatracker.ietf.org/doc/html/rfc7231#section-7.1.4) response
 headers that target request headers with great variation in the values (like
@@ -182,21 +237,7 @@ Deno.serve(async (req) => {
   // ...
 ```
 
-## Additional modules
-
-This package includes some `CachePersistence` implementations:
-
-- [Memory](./src/cache-persistence-memory.ts) (default): It stores the
-  Request/Response pairs in a plain object, therefore It doesn't really provide
-  persistence beyond the current process duration. It can be used for testing
-  the library without further complications.
-- [Deno KV](./src/cache-persistence-deno-kv.ts): Implemente using
-  [kv-toolbox](https://jsr.io/@kitsonk/kv-toolbox) to provide arbitrarily large
-  Response sizes.
-- [Redis](./src/cache-persistence-redis.ts): Implemented with the
-  [Deno native client](https://github.com/denodrivers/redis).
-
-### Stale entries and revalidation
+## Stale entries and revalidation
 
 Construct a persistence with `staleRetention: 'retain'` to make `cache.match()`
 return stale entries (alongside fresh ones), with an `x-cachestorage-stale: 1`
@@ -204,14 +245,11 @@ header on the materialised `Response`. No non-standard `Cache` method is
 involved — plain W3C `Cache.match()` plus a single header check:
 
 ```ts
-import {
-    CachePersistenceMemory,
-    CacheStorage,
-} from '@esroyo/web-cache-api-persistence';
+import { createCacheStorage } from '@esroyo/web-cache-api-persistence';
+import memory from '@esroyo/web-cache-api-persistence/memory';
 
-const caches = new CacheStorage({
-    create: async () =>
-        new CachePersistenceMemory({ staleRetention: 'retain' }),
+const caches = createCacheStorage({
+    persistence: memory({ staleRetention: 'retain' }),
 });
 
 const cache = await caches.open('v1');
@@ -242,12 +280,11 @@ For a **pure-TTL cache** that ignores HTTP semantics entirely, combine
 `'retain'` with a small custom `maxPersistenceTtlMs` and ignore the marker:
 
 ```ts
-const caches = new CacheStorage({
-    create: async () =>
-        new CachePersistenceMemory({
-            staleRetention: 'retain',
-            maxPersistenceTtlMs: 60_000, // 60-second TTL
-        }),
+const caches = createCacheStorage({
+    persistence: memory({
+        staleRetention: 'retain',
+        maxPersistenceTtlMs: 60_000, // 60-second TTL
+    }),
 });
 
 const cache = await caches.open('session');
@@ -345,3 +382,31 @@ The spec [states](https://w3c.github.io/ServiceWorker/#batch-cache-operations)
 that a if an Exception was thrown during a _Batched Cache Operation_, then all
 items from the relevant request response list should be reverted to the orignal
 cached values. This is **not** implemented.
+
+## Migration from versions prior to v0.4
+
+Versions prior to v0.4 re-exported backend persistence classes from the package
+root and used the shorter `CachePersistenceRedis` naming. The following breaking
+changes were introduced in v0.4:
+
+- **`mod.ts` no longer re-exports backend persistence classes.** Imports of
+  `CachePersistenceMemory`, `CachePersistenceDenoKv`, `CachePersistenceNoop`,
+  and `CachePersistenceRedis` from the package root will fail to resolve and
+  must move to the matching sub-path.
+- **`CachePersistenceRedis` is renamed to `CachePersistenceDenoRedis`** (and
+  `CachePersistenceRedisOptions` → `CachePersistenceDenoRedisOptions`). The old
+  names remain available as `@deprecated` aliases re-exported from
+  `/deno-redis`, and refer to the same class identity (so `instanceof` against
+  either name keeps working). Removal is targeted for the next major release.
+
+Mechanical migration table:
+
+| Old import                                                                                 | New import                                                                                                                                                                                                            |
+| ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `import { CachePersistenceMemory } from 'jsr:.../web-cache-api-persistence'`               | `import { CachePersistenceMemory } from 'jsr:.../web-cache-api-persistence/memory'`                                                                                                                                   |
+| `import { CachePersistenceDenoKv } from 'jsr:.../web-cache-api-persistence'`               | `import { CachePersistenceDenoKv } from 'jsr:.../web-cache-api-persistence/deno-kv`                                                                                                                                   |
+| `import { CachePersistenceNoop } from 'jsr:.../web-cache-api-persistence'` (if applicable) | `import { CachePersistenceNoop } from 'jsr:.../web-cache-api-persistence/noop'`                                                                                                                                       |
+| `import { CachePersistenceRedis } from 'jsr:.../web-cache-api-persistence'`                | `import { CachePersistenceRedis } from 'jsr:.../web-cache-api-persistence/deno-redis'` (deprecated alias) OR `import { CachePersistenceDenoRedis } from 'jsr:.../web-cache-api-persistence/deno-redis'` (recommended) |
+
+Switching to the `createCacheStorage` + factory idiom is recommended but not
+required — `new CacheStorage(...)` continues to work unchanged.

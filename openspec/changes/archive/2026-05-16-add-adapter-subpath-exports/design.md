@@ -438,11 +438,15 @@ src/
     cache.ts                          ← Cache class
     cache-storage.ts                  ← CacheStorage + createCacheStorage
     cache-persistence-base.ts         ← shared base class for backends
-    cache-persistence.bench.ts        ← cross-backend benchmark
-    cache-storage.test.ts
+    create-cache-storage.test.ts      ← unit tests for createCacheStorage
     types.ts                          ← unified public types
     webidl.ts                         ← Web IDL glue
     test-utils.ts                     ← shared test helpers
+  _shared/
+    cache-storage.test.ts             ← shared CacheStorage conformance suite,
+                                        parameterised per backend via
+                                        globalThis.caches and re-imported by
+                                        each backend's mod.test.ts
   memory/
     mod.ts                            ← public entry: class + factory + options
     mod.test.ts
@@ -457,6 +461,10 @@ src/
     mod.test.ts
     instrument-redis-client.ts        ← Redis-internal helper
     instrument-redis-client.test.ts
+bench/
+  cache-persistence.bench.ts          ← cross-backend benchmark (dev-only,
+                                        excluded from JSR via
+                                        `deno.json`'s `publish.exclude`)
 ```
 
 Three alternatives considered:

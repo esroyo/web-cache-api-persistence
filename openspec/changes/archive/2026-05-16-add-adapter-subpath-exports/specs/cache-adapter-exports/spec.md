@@ -412,21 +412,49 @@ self-contained module.
   interfaces, etc.)
 - `webidl.ts` (Web IDL platform glue)
 - `test-utils.ts` (shared test helpers)
-- `cache-persistence.bench.ts` (cross-backend benchmark)
-- Core tests (e.g. `cache-storage.test.ts`, any `cache.test.ts` that exists or
-  is added)
+- Tests that exercise `core/` directly without depending on a backend (e.g.
+  `create-cache-storage.test.ts`)
+
+`src/core/` SHALL NOT contain files that import from any `src/<backend>/`
+directory. The cross-backend benchmark — which by nature imports every backend —
+therefore lives outside `src/`, at `bench/cache-persistence.bench.ts` (see
+below). The shared cross-backend `CacheStorage` conformance test suite — which
+is re-imported per backend with a backend-specific `globalThis.caches` — lives
+at `src/_shared/cache-storage.test.ts`, not in `src/core/`. This keeps the
+dependency direction one-way: backends and shared test infrastructure depend on
+core; core never depends on them.
 
 `src/<backend>/` (sibling of `core/`, one per backend) SHALL contain:
 
 - `mod.ts` — the public sub-path entry point, exporting the class, factory
   function, and options type
 - `mod.test.ts` — colocated test for the backend
+
+Each `src/<backend>/mod.test.ts` MAY dynamically re-import the shared
+conformance suite at `../_shared/cache-storage.test.ts` after assigning a
+backend-specific `CacheStorage` instance to `globalThis.caches`.
+
 - Any backend-internal helper modules (e.g. `instrument-redis-client.ts` and its
   test, inside `src/deno-redis/`)
 
+`src/_shared/` (sibling of `core/` and the backend directories) SHALL contain
+test infrastructure shared across backends. Specifically, the
+parameterised-by-backend `CacheStorage` conformance suite
+(`cache-storage.test.ts`) lives here. The leading underscore signals "internal,
+not part of any public sub-path, not part of `core/`". `src/_shared/` is
+**production-code-free** — only `*.test.ts` and test helpers belong here.
+
 Backend directories SHALL NOT import from each other. Each backend directory
-SHALL import only from `../core/` (and from third-party packages declared in
-`deno.json`'s `imports`). This is convention, not tooling-enforced.
+SHALL import only from `../core/` for production code; backend test files MAY
+additionally import from `../_shared/` for the cross-backend conformance suite.
+This is convention, not tooling-enforced.
+
+The cross-backend benchmark lives at `bench/cache-persistence.bench.ts` (sibling
+of `src/`, not under it). It is a dev-only artifact that consumes the library —
+it imports `CacheStorage` from `src/core/` and every backend from
+`src/<backend>/`. It is excluded from the published JSR package via
+`deno.json`'s `publish.exclude`. The `bench` task in `deno.json` runs it via
+`deno bench -A --unstable-kv bench/cache-persistence.bench.ts`.
 
 The on-disk layout of `src/` SHALL NOT contain the legacy flat-file forms
 (`src/cache-persistence-*.ts`, `src/cache.ts`, `src/cache-storage.ts`,
@@ -441,8 +469,41 @@ The on-disk layout of `src/` SHALL NOT contain the legacy flat-file forms
 - **THEN** `src/core/cache.ts` exists AND `src/core/cache-storage.ts` exists AND
   `src/core/cache-persistence-base.ts` exists AND `src/core/types.ts` exists AND
   `src/core/webidl.ts` exists AND `src/core/test-utils.ts` exists AND
-  `src/core/cache-persistence.bench.ts` exists AND
-  `src/core/cache-storage.test.ts` exists
+  `src/core/create-cache-storage.test.ts` exists AND
+  `src/core/cache-storage.test.ts` does NOT exist (the shared cross-backend
+  conformance suite lives at `src/_shared/cache-storage.test.ts`, not in
+  `src/core/`)
+
+#### Scenario: src/core/ does not contain backend-specific imports
+
+- **WHEN** every TypeScript file under `src/core/` is parsed for its static
+  `import` declarations
+- **THEN** no import specifier resolves to a file under any `src/<backend>/`
+  directory (`src/memory/`, `src/noop/`, `src/deno-kv/`, `src/deno-redis/`),
+  with one exception: `src/core/cache-storage.ts` MAY import
+  `CachePersistenceMemory` from `../memory/mod.ts` to back the no-args default
+  of the `CacheStorage` constructor. No other `src/core/*.ts` file may reference
+  any backend directory by path
+
+#### Scenario: shared cross-backend conformance suite lives in src/_shared/
+
+- **WHEN** the file system is inspected after the change is applied
+- **THEN** `src/_shared/cache-storage.test.ts` exists AND
+  `src/core/cache-storage.test.ts` does NOT exist AND
+  `src/cache-storage.test.ts` does NOT exist AND each of
+  `src/memory/mod.test.ts`, `src/deno-kv/mod.test.ts`, and
+  `src/deno-redis/mod.test.ts` dynamically re-imports
+  `../_shared/cache-storage.test.ts` (verifiable by searching the file content
+  for the substring `await import('../_shared/cache-storage.test.ts')`)
+
+#### Scenario: cross-backend bench lives outside src/
+
+- **WHEN** the file system is inspected after the change is applied
+- **THEN** `bench/cache-persistence.bench.ts` exists AND
+  `src/core/cache-persistence.bench.ts` does NOT exist AND
+  `src/cache-persistence.bench.ts` does NOT exist AND `deno.json.tasks.bench` is
+  a string containing the substring `bench/cache-persistence.bench.ts` AND
+  `deno.json.publish.exclude` is an array containing the entry `"bench/"`
 
 #### Scenario: each backend lives in its own directory with a mod.ts entry
 

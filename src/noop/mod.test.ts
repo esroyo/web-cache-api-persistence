@@ -1,8 +1,8 @@
-import { assertEquals } from '@std/assert';
+import { assert, assertEquals } from '@std/assert';
 import { stub } from '@std/testing/mock';
-import { CachePersistenceNoop } from './cache-persistence-noop.ts';
-import { CacheStorage } from './cache-storage.ts';
-import type { CacheLike, CachePersistenceBaseOptions } from './types.ts';
+import { CachePersistenceNoop } from './mod.ts';
+import { CacheStorage } from '../core/cache-storage.ts';
+import type { CacheLike, CachePersistenceBaseOptions } from '../core/types.ts';
 
 /**
  * Build a fresh `CacheStorage` backed by `CachePersistenceNoop` configured
@@ -107,4 +107,59 @@ Deno.test('Noop — options are accepted but nothing is ever stored', async (t) 
             await assertNothingStored(cache, req);
         },
     );
+});
+
+import noopDefault, { noop } from './mod.ts';
+
+Deno.test('noop factory', async (t) => {
+    await t.step('default and named exports are identity-equal', () => {
+        assertEquals(noopDefault, noop);
+    });
+
+    await t.step('factory.create() returns CachePersistenceNoop', async () => {
+        const factory = noop();
+        const instance = await factory.create();
+        assert(instance instanceof CachePersistenceNoop);
+    });
+
+    await t.step('no memoization across create() calls', async () => {
+        const factory = noop();
+        const a = await factory.create();
+        const b = await factory.create();
+        assert(a !== b);
+    });
+
+    await t.step('no state shared across factory-function calls', () => {
+        const fA = noop();
+        const fB = noop();
+        assert(fA !== fB);
+    });
+
+    await t.step('does not mutate the options argument', async () => {
+        const opts: CachePersistenceBaseOptions = {
+            maxPersistenceTtlMs: 60_000,
+            staleRetention: 'retain' as const,
+        };
+        const snapshot = { ...opts };
+        // Silence the noop's per-call console.log so the test output stays clean.
+        using _logStub = stub(console, 'log');
+        await noop(opts).create();
+        assertEquals(opts, snapshot);
+    });
+
+    await t.step('behavior matches direct class instantiation', async () => {
+        using _logStub = stub(console, 'log');
+        const fromFactory = await noop().create();
+        const direct = new CachePersistenceNoop();
+        const req = new Request('https://example.test/');
+        const res = new Response('hi');
+        assertEquals(
+            await fromFactory.put('v1', req, res.clone()),
+            await direct.put('v1', req, res.clone()),
+        );
+        assertEquals(
+            (await fromFactory.keys()).length,
+            (await direct.keys()).length,
+        );
+    });
 });

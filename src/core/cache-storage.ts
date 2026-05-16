@@ -9,7 +9,7 @@ import type {
 } from './types.ts';
 import * as webidl from './webidl.ts';
 import { Cache } from './cache.ts';
-import { CachePersistenceMemory } from './cache-persistence-memory.ts';
+import { CachePersistenceMemory } from '../memory/mod.ts';
 
 /**
  * The storage for Cache objects.
@@ -121,4 +121,38 @@ export class CacheStorage implements CacheStorageLike {
             }
         }
     }
+}
+
+/**
+ * Options for {@link createCacheStorage}.
+ *
+ * The `persistence` option's type is **identical** to the type of the first
+ * positional parameter of the {@link CacheStorage} constructor — anything that
+ * works there works here.
+ */
+export interface CreateCacheStorageOptions {
+    persistence?: CachePersistenceFactory | CachePersistenceConstructable;
+    headerNormalizer?: CacheHeaderNormalizer;
+    Cache?: CacheLikeConstructable;
+}
+
+/**
+ * Create a {@link CacheStorage} backed by the supplied persistence factory or
+ * class.
+ *
+ * Sugar over `new CacheStorage(persistence, headerNormalizer, Cache)` with an
+ * options-bag signature that's easier to extend over time.
+ *
+ * The `persistence` option type is identical to the first positional parameter
+ * of the {@link CacheStorage} constructor — anything that works there works
+ * here.
+ */
+export function createCacheStorage(
+    options: CreateCacheStorageOptions = {},
+): CacheStorage {
+    return new CacheStorage(
+        options.persistence,
+        options.headerNormalizer,
+        options.Cache,
+    );
 }
