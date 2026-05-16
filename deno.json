@@ -1,6 +1,6 @@
 {
   "name": "@esroyo/web-cache-api-persistence",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "exports": {
     ".": "./mod.ts",
     "./memory": "./src/memory/mod.ts",
@@ -16,7 +16,6 @@
     "release:dry-run": "deno run -A npm:commit-and-tag-version --dry-run && deno publish --dry-run --allow-slow-types --allow-dirty",
     "test": "deno test -A --parallel --unstable-kv"
   },
-
   "publish": {
     "exclude": [
       "bench/"

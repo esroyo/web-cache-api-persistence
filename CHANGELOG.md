@@ -1,108 +1,31 @@
 # Changelog
 
-All notable changes to this project will be documented in this file. See
-[commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version)
-for commit guidelines.
+All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
-## Unreleased
+## [0.4.0](https://github.com/esroyo/web-cache-api-persistence/compare/v0.3.1...v0.4.0) (2026-05-16)
+
 
 ### ⚠ BREAKING CHANGES
 
-- **`mod.ts` no longer re-exports backend persistence classes.** Imports of
-  `CachePersistenceMemory`, `CachePersistenceDenoKv`, `CachePersistenceNoop`,
-  and `CachePersistenceDenoRedis` (and the deprecated alias
-  `CachePersistenceRedis`) from the package root will no longer resolve.
-  Consumers must update each import to the matching sub-path:
-
-  | Old import                                                                   | New import                                                                                                                                         |
-  | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | `import { CachePersistenceMemory } from 'jsr:.../web-cache-api-persistence'` | `import { CachePersistenceMemory } from 'jsr:.../web-cache-api-persistence/memory'`                                                                |
-  | `import { CachePersistenceDenoKv } from 'jsr:.../web-cache-api-persistence'` | `import { CachePersistenceDenoKv } from 'jsr:.../web-cache-api-persistence/deno-kv'`                                                               |
-  | `import { CachePersistenceNoop } from 'jsr:.../web-cache-api-persistence'`   | `import { CachePersistenceNoop } from 'jsr:.../web-cache-api-persistence/noop'`                                                                    |
-  | `import { CachePersistenceRedis } from 'jsr:.../web-cache-api-persistence'`  | `import { CachePersistenceRedis } from 'jsr:.../web-cache-api-persistence/deno-redis'` (deprecated alias; `CachePersistenceDenoRedis` recommended) |
-
-  The library is pre-1.0; this is the right release in which to accept the cost.
-  Keeping the root re-exports would have defeated the lazy-resolution property
-  motivating the change — re-exports under Deno/JSR are evaluated eagerly, so
-  any consumer importing _anything_ from the root would still pull every
-  backend's transitive dependency graph into their module graph.
-- **`CachePersistenceRedis` is renamed to `CachePersistenceDenoRedis`** (and
-  `CachePersistenceRedisOptions` → `CachePersistenceDenoRedisOptions`). The
-  class is Deno-specific (uses `@db/redis`), and the old name squatted the
-  natural identifier a future Node/ioredis variant would want. The old names
-  remain exported as `@deprecated` aliases from the new `/deno-redis` sub-path,
-  pointing at the same class identity, so `instanceof` against either name keeps
-  working. Removal of the aliases is targeted for the next major release.
-- **Responses without `Cache-Control` and without `Expires` are no longer
-  silently cached for 30 days.** The previous behavior was an undocumented
-  heuristic-freshness policy that violated
-  [RFC 9111 §4.2.1](https://www.rfc-editor.org/rfc/rfc9111#section-4.2.1) (which
-  says such responses have no explicit freshness lifetime). Under default
-  `staleRetention: 'evict'` such responses are now evicted ~immediately (in fact
-  `_pairToPlain` declines to store them — there is no freshness signal that
-  justifies caching them); under `staleRetention: 'retain'` they are immediately
-  stale (marker header set) but retained for `maxPersistenceTtlMs`.
-  **Migration:** set explicit `Cache-Control: max-age=N` on responses you want
-  cached for `N` seconds, or use `staleRetention: 'retain'` and consult the
-  `x-cachestorage-stale` header in application code. Positioned as a fix rather
-  than a feature regression: the prior 30-day fallback was an undocumented RFC
-  violation.
+* per-backend sub-path exports, src/ layout restructure, createCacheStorage
+* separate expired from evicted entries
 
 ### Features
 
-- Add `createCacheStorage({ persistence, headerNormalizer?, Cache? })` helper
-  exported from `mod.ts`, plus the `CreateCacheStorageOptions` type. The
-  `persistence` field accepts the same
-  `CachePersistenceFactory |
-  CachePersistenceConstructable` union the existing
-  `CacheStorage` constructor's first positional parameter already accepts — the
-  helper introduces no new type, only a named-options-bag signature that's
-  easier to extend over time. `new CacheStorage(...)` is unchanged and still
-  supported.
-- Add per-backend sub-path exports — `/memory`, `/noop`, `/deno-kv`,
-  `/deno-redis`. Each sub-path is the **canonical home** for its backend and
-  exports a default factory function (e.g. `memory`, `denoRedis`), a
-  same-identity named factory under the same name, the persistence class (e.g.
-  `CachePersistenceMemory`, `CachePersistenceDenoRedis`), and the options type.
-  Consumers who import only `/memory` no longer pay the dependency-resolution
-  cost for `@db/redis`, `@kitsonk/kv-toolbox`, `generic-pool`, etc.
-- Add `staleRetention` (`'evict' | 'retain'`) and `maxPersistenceTtlMs` (number,
-  default 30 days) options on bundled persistence implementations.
-  `staleRetention: 'retain'` makes the cache W3C-spec compliant: entries persist
-  as stale (signalled via `x-cachestorage-stale` header) until
-  `maxPersistenceTtlMs` elapses. `maxPersistenceTtlMs` is a universal upper
-  bound on entry storage lifetime, applied in both modes. Deno KV's native
-  30-day `expireIn` cap is documented as a known backend constraint on
-  `maxPersistenceTtlMs` values exceeding it.
+* per-backend sub-path exports, src/ layout restructure, createCacheStorage ([1613d9e](https://github.com/esroyo/web-cache-api-persistence/commit/1613d9edff5d60988f291fb4c0e4b72edcb4263a))
+* separate expired from evicted entries ([6f02e0c](https://github.com/esroyo/web-cache-api-persistence/commit/6f02e0c88d30f927706dbf22a0dad6dbd1efef2e))
 
-### Moved
-
-- Source-layout restructure to a pseudo-monorepo shape. The layered foundation
-  now lives under `src/core/` (`cache.ts`, `cache-storage.ts`,
-  `cache-persistence-base.ts`, `types.ts`, `webidl.ts`, `test-utils.ts`,
-  `cache_persistence_bench.ts`, plus core tests). Each backend lives in its own
-  sibling directory (`src/memory/`, `src/noop/`, `src/deno-kv/`,
-  `src/deno-redis/`) with a `mod.ts` entry point and a colocated `mod_test.ts`.
-  The Redis-specific OpenTelemetry instrumentation (`instrument-redis-client.ts`
-  and its test) moved from `src/` to `src/deno-redis/` where it belongs. The
-  on-disk layout now mirrors the public sub-path layout and each backend is a
-  self-contained unit.
-
-### Deprecated
-
-- `CachePersistenceRedis` and `CachePersistenceRedisOptions` on the
-  `/deno-redis` sub-path. Both are re-exports of the renamed
-  `CachePersistenceDenoRedis` class / `CachePersistenceDenoRedisOptions`
-  interface; runtime identity is unchanged. Targeted for removal in the next
-  major release.
 
 ### Bug Fixes
 
-- `_expiresIn()` now represents pure HTTP freshness semantics (no
-  `_maxPersistenceTtlMs` clamping or fallback). All storage-policy clamping
-  moves to the new `_evictionDelay()` helper. This aligns the library with RFC
-  9111 §4.2.1 by treating header-less responses as having no explicit freshness
-  lifetime.
+* release redis pool client before _dbDel in _dbGet to avoid self-deadlock ([b033156](https://github.com/esroyo/web-cache-api-persistence/commit/b0331564643b0837a7a4898b1ddb4e279d43a360))
+
+
+### Other
+
+* **openspec:** archive separate-expired-from-evicted ([d89f3cd](https://github.com/esroyo/web-cache-api-persistence/commit/d89f3cd9b0918c567201563a825596a3e8d11ca0))
+* **openspec:** propose add-adapter-subpath-exports ([d60b351](https://github.com/esroyo/web-cache-api-persistence/commit/d60b351b45c62c9ea814503ae00701add47e2b50))
+* **openspec:** propose separating expired from evicted entries ([4e24386](https://github.com/esroyo/web-cache-api-persistence/commit/4e24386becd0e897d0c6e0613a3f91168e91d704))
 
 ## [0.3.2](https://github.com/esroyo/web-cache-api-persistence/compare/v0.3.1...v0.3.2) (2026-05-16)
 
