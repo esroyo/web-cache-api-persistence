@@ -1,0 +1,271 @@
+import { createPool, type Pool } from "generic-pool";
+import { get as kvToolboxGet } from "@kitsonk/kv-toolbox/blob";
+import { batchedAtomic } from "@kitsonk/kv-toolbox/batched_atomic";
+
+import type {
+  CachePersistenceDenoKvOptions,
+  CachePersistenceFactory,
+  CachePersistenceLike,
+  PlainReqRes,
+} from "../core/types.ts";
+import { CachePersistenceBase } from "../core/cache_persistence_base.ts";
+import * as webidl from "../core/webidl.ts";
+import * as sorted from "sorted";
+
+export type { CachePersistenceDenoKvOptions };
+
+export class CachePersistenceDenoKv extends CachePersistenceBase
+  implements CachePersistenceLike {
+  protected override _options: CachePersistenceDenoKvOptions;
+  protected _dbPool: Pool<Deno.Kv>;
+  protected override get _defaultOptions(): CachePersistenceDenoKvOptions {
+    return {
+      ...super._defaultOptions,
+      consistency: "strong" satisfies Deno.KvConsistencyLevel,
+      // Pool defaults
+      evictionRunIntervalMillis: 60 * 1000,
+      max: 1,
+      min: 1,
+    };
+  }
+
+  constructor(options?: CachePersistenceDenoKvOptions) {
+    super(options);
+    this._options = { ...this._defaultOptions, ...options };
+    this._dbPool = createPool<Deno.Kv>({
+      create: async () => Deno.openKv(this._options.path),
+      destroy: async (kv) => {
+        kv.close();
+      },
+    }, this._options);
+  }
+
+  async keys(): Promise<string[]> {
+    const cacheNames = new Set<string>();
+    const persistenceKey = (await this._persistenceKey("")).slice(0, -1);
+    for (const key of await this._dbScan(persistenceKey)) {
+      cacheNames.add(key[1]);
+    }
+    return [...cacheNames];
+  }
+
+  async put(
+    cacheName: string,
+    request: Request,
+    response: Response,
+  ): Promise<boolean> {
+    const pair = await this._pairToPlain(request, response);
+
+    if (!pair) {
+      return false;
+    }
+
+    const [plainReqRes, expiresIn] = pair;
+
+    const persistenceKey = await this._persistenceKey(
+      cacheName,
+      plainReqRes,
+    );
+
+    await this._dbSet(
+      persistenceKey,
+      plainReqRes,
+      expiresIn,
+    );
+
+    return true;
+  }
+
+  async delete(
+    cacheName: string,
+    request: Request,
+    response?: Response,
+  ): Promise<boolean> {
+    if (!response) {
+      const persistenceKey = await this._persistenceKey(
+        cacheName,
+        request,
+      );
+      const keys = await this._dbKeys(persistenceKey);
+      let hasDeleted = false;
+      for (const key of keys) {
+        await this._dbDel(key);
+        hasDeleted = true;
+      }
+      return hasDeleted;
+    }
+
+    const persistenceKey = await this._persistenceKey(
+      cacheName,
+      request,
+      response,
+    );
+    await this._dbDel(persistenceKey);
+    return true;
+  }
+
+  async *get(
+    cacheName: string,
+    request: Request,
+  ): AsyncGenerator<readonly [Request, Response], void, unknown> {
+    const persistenceKey = await this._persistenceKey(cacheName, request);
+    const keys = await this._dbKeys(persistenceKey);
+    for (const key of keys) {
+      const plainReqRes = await this._dbGet(key);
+      if (!plainReqRes) {
+        continue;
+      }
+      const expired = this._hasExpired(plainReqRes);
+      if (expired && this._staleRetention === "evict") {
+        continue;
+      }
+      yield [
+        this._plainToRequest(plainReqRes),
+        this._plainToResponse(plainReqRes, { stale: expired }),
+      ] as const;
+    }
+  }
+
+  [Symbol.asyncIterator](
+    cacheName: string,
+  ): AsyncGenerator<readonly [Request, Response], void, unknown> {
+    const prefix =
+      "Failed to execute '[[Symbol.asyncIterator]]' on 'CachePersistence'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    const instance = this;
+    return (async function* () {
+      const persistenceKey = await instance._persistenceKey(cacheName);
+      const keys = await instance._dbScan(persistenceKey);
+      for (const key of keys) {
+        const plainReqRes = await instance._dbGet(key);
+        if (!plainReqRes) {
+          continue;
+        }
+        const expired = instance._hasExpired(plainReqRes);
+        if (expired && instance._staleRetention === "evict") {
+          continue;
+        }
+        yield [
+          instance._plainToRequest(plainReqRes),
+          instance._plainToResponse(plainReqRes, { stale: expired }),
+        ] as const;
+      }
+    })();
+  }
+
+  async [Symbol.asyncDispose](): Promise<void> {
+    await this._dbPool.drain();
+    await this._dbPool.clear();
+  }
+
+  protected async _dbScan(key: string[]): Promise<string[][]> {
+    const client = await this._dbPool.acquire();
+    const iter = client.list<string>({ prefix: key });
+    const found: string[] = [];
+    for await (const res of iter) {
+      if (res.key.length === 3) { // This is an index (a Set)
+        for (const key of res.value) {
+          sorted.add(found, key, this._compareFn);
+        }
+      }
+    }
+    await this._dbPool.release(client);
+    return found.map(this._splitKey);
+  }
+
+  protected async _dbKeys(key: string[]): Promise<string[][]> {
+    const indexKey = this._indexKey(key);
+    const client = await this._dbPool.acquire();
+    const indexRes = await client.get<Set<string>>(indexKey);
+    await this._dbPool.release(client);
+    if (!indexRes.value) {
+      return [];
+    }
+    const found = [...indexRes.value]
+      .sort()
+      .map((key) => this._splitKey(key));
+    return found;
+  }
+
+  protected async _dbGet(key: string[]): Promise<PlainReqRes | null> {
+    const client = await this._dbPool.acquire();
+    const result = await kvToolboxGet(client, key, {
+      consistency: this._options.consistency,
+    });
+    await this._dbPool.release(client);
+    if (!result.value) {
+      await this._dbDel(key);
+      return null;
+    }
+    return this._parse(result.value as Uint8Array) as PlainReqRes;
+  }
+
+  protected async _dbDel(key: string[]): Promise<void> {
+    const indexKey = this._indexKey(key);
+    const client = await this._dbPool.acquire();
+    const indexRes = await client.get<Set<string>>(indexKey);
+    const index = indexRes.value || new Set<string>();
+    index.delete(this._joinKey(key));
+    const op = batchedAtomic(client)
+      .check(indexRes)
+      .deleteBlob(key);
+    if (index.size) {
+      op.set(indexKey, index, { expireIn: this._maxPersistenceTtlMs });
+    } else {
+      op.delete(indexKey);
+    }
+    await op.commit();
+    await this._dbPool.release(client);
+  }
+
+  protected async _dbSet(
+    key: string[],
+    value: PlainReqRes,
+    expireIn: number,
+  ): Promise<void> {
+    const indexKey = this._indexKey(key);
+    const client = await this._dbPool.acquire();
+    const indexRes = await client.get<Set<string>>(indexKey);
+    const index = indexRes.value || new Set<string>();
+    index.add(this._joinKey(key));
+    // The value-blob's `expireIn` is determined by `_evictionDelay`:
+    // under `'evict'` it is `min(httpExpiresIn, maxPersistenceTtlMs)`;
+    // under `'retain'` it is `maxPersistenceTtlMs`. The eviction
+    // primitive (Deno KV's native `expireIn`) is ALWAYS invoked — only
+    // the value changes between modes.
+    //
+    // The index-collection continues to use `_maxPersistenceTtlMs`
+    // directly: it represents the upper bound on index lifetime, which
+    // is invariant under retention mode (and matches pre-change
+    // behavior since `_maxExpireIn` was the prior name for the same
+    // constant).
+    await batchedAtomic(client)
+      .check(indexRes)
+      .set(indexKey, index, { expireIn: this._maxPersistenceTtlMs })
+      .setBlob(key, this._serialize(value), {
+        expireIn: this._evictionDelay(expireIn),
+      })
+      .commit();
+    await this._dbPool.release(client);
+  }
+
+  protected _indexKey(
+    key: string[],
+  ): string[] {
+    return key.slice(0, 3);
+  }
+}
+
+/**
+ * Factory for the Deno KV persistence backend.
+ *
+ * Returns a {@link CachePersistenceFactory} suitable for
+ * {@link createCacheStorage} or `new CacheStorage(...)`.
+ */
+export function denoKv(
+  options?: CachePersistenceDenoKvOptions,
+): CachePersistenceFactory {
+  return { create: async () => new CachePersistenceDenoKv(options) };
+}
+
+export default denoKv;

@@ -80,9 +80,9 @@ for commit guidelines.
 - Source-layout restructure to a pseudo-monorepo shape. The layered foundation
   now lives under `src/core/` (`cache.ts`, `cache-storage.ts`,
   `cache-persistence-base.ts`, `types.ts`, `webidl.ts`, `test-utils.ts`,
-  `cache-persistence.bench.ts`, plus core tests). Each backend lives in its own
+  `cache_persistence_bench.ts`, plus core tests). Each backend lives in its own
   sibling directory (`src/memory/`, `src/noop/`, `src/deno-kv/`,
-  `src/deno-redis/`) with a `mod.ts` entry point and a colocated `mod.test.ts`.
+  `src/deno-redis/`) with a `mod.ts` entry point and a colocated `mod_test.ts`.
   The Redis-specific OpenTelemetry instrumentation (`instrument-redis-client.ts`
   and its test) moved from `src/` to `src/deno-redis/` where it belongs. The
   on-disk layout now mirrors the public sub-path layout and each backend is a

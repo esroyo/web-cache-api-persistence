@@ -40,7 +40,7 @@ SHALL change.
 
 `main.ts` (the project's smoke-test entry point) SHALL be updated to use the
 renamed class name imported from the sub-path module, and to demonstrate the
-`createCacheStorage` + factory idiom. The files `redis_up.ts` and `redis.conf`
+`createCacheStorage` + factory idiom. The files `redis-up.ts` and `redis.conf`
 at the project root SHALL NOT be renamed (they describe the Redis _server_
 setup, not the persistence class), but any in-file text that references the
 class by name SHALL be updated.
@@ -105,7 +105,7 @@ self-contained module.
 
 `src/core/` SHALL NOT contain files that import from any `src/<backend>/`
 directory. The cross-backend benchmark — which by nature imports every backend —
-therefore lives outside `src/`, at `bench/cache_persistence_bench.ts` (see
+therefore lives outside `src/`, at `bench/cache-persistence.bench.ts` (see
 below). The shared cross-backend `CacheStorage` conformance test suite — which
 is re-imported per backend with a backend-specific `globalThis.caches` — lives
 at `src/_shared/cache_storage_test.ts`, not in `src/core/`. This keeps the
@@ -137,12 +137,12 @@ SHALL import only from `../core/` for production code; backend test files MAY
 additionally import from `../_shared/` for the cross-backend conformance suite.
 This is convention, not tooling-enforced.
 
-The cross-backend benchmark lives at `bench/cache_persistence_bench.ts` (sibling
+The cross-backend benchmark lives at `bench/cache-persistence.bench.ts` (sibling
 of `src/`, not under it). It is a dev-only artifact that consumes the library —
 it imports `CacheStorage` from `src/core/` and every backend from
 `src/<backend>/`. It is excluded from the published JSR package via
 `deno.json`'s `publish.exclude`. The `bench` task in `deno.json` runs it via
-`deno bench -A --unstable-kv bench/cache_persistence_bench.ts`.
+`deno bench -A --unstable-kv bench/cache-persistence.bench.ts`.
 
 The on-disk layout of `src/` SHALL NOT contain the legacy flat-file forms
 (`src/cache-persistence-*.ts`, `src/cache.ts`, `src/cache-storage.ts`,
@@ -187,10 +187,10 @@ The on-disk layout of `src/` SHALL NOT contain the legacy flat-file forms
 #### Scenario: cross-backend bench lives outside src/
 
 - **WHEN** the file system is inspected after the change is applied
-- **THEN** `bench/cache_persistence_bench.ts` exists AND
+- **THEN** `bench/cache-persistence.bench.ts` exists AND
   `src/core/cache_persistence_bench.ts` does NOT exist AND
   `src/cache_persistence_bench.ts` does NOT exist AND `deno.json.tasks.bench` is
-  a string containing the substring `bench/cache_persistence_bench.ts` AND
+  a string containing the substring `bench/cache-persistence.bench.ts` AND
   `deno.json.publish.exclude` is an array containing the entry `"bench/"`
 
 #### Scenario: each backend lives in its own directory with a mod.ts entry

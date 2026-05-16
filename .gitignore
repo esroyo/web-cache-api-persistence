@@ -135,5 +135,5 @@ dist
 #custom
 main.ts
 tmp
-redis-up.ts
+redis_up.ts
 .opencode
