@@ -1,6 +1,6 @@
 {
   "name": "@esroyo/web-cache-api-persistence",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "exports": {
     ".": "./mod.ts",
     "./memory": "./src/memory/mod.ts",
