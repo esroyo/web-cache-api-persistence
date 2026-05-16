@@ -7,8 +7,8 @@ import {
     assertRejects,
 } from '@std/assert';
 import { returnsNext, stub } from '@std/testing/mock';
-import type { CacheStorageLike } from './types.ts';
-import { CacheStorage } from './cache-storage.ts';
+import type { CacheStorageLike } from '../core/types.ts';
+import { CacheStorage } from '../core/cache-storage.ts';
 
 declare var caches: CacheStorageLike;
 

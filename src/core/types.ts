@@ -320,7 +320,7 @@ export interface CachePersistenceBaseOptions {
 export interface CachePersistenceMemoryOptions
     extends CachePersistenceBaseOptions {}
 
-export interface CachePersistenceRedisOptions
+export interface CachePersistenceDenoRedisOptions
     extends RedisConnectOptions, PoolOptions, CachePersistenceBaseOptions {
     bulkLimit?: number;
     instrumentation?: boolean;

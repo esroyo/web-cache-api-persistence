@@ -1,8 +1,11 @@
 import { assert, assertEquals } from '@std/assert';
 import { delay } from '@std/async/delay';
-import { CachePersistenceDenoKv } from './cache-persistence-deno-kv.ts';
-import { CacheStorage } from './cache-storage.ts';
-import type { CacheLike, CachePersistenceDenoKvOptions } from './types.ts';
+import { CachePersistenceDenoKv } from './mod.ts';
+import { CacheStorage } from '../core/cache-storage.ts';
+import type {
+    CacheLike,
+    CachePersistenceDenoKvOptions,
+} from '../core/types.ts';
 
 /**
  * Build a fresh `CacheStorage` whose backing persistence is a
@@ -171,6 +174,66 @@ Deno.test('Deno KV — staleRetention=retain', async (t) => {
     );
 });
 
+import denoKvDefault, { denoKv } from './mod.ts';
+
+Deno.test('denoKv factory', async (t) => {
+    const baseOptions: CachePersistenceDenoKvOptions = {
+        max: 1,
+        min: 1,
+        path: ':memory:',
+    };
+
+    await t.step('default and named exports are identity-equal', () => {
+        assertEquals(denoKvDefault, denoKv);
+    });
+
+    await t.step(
+        'factory.create() returns CachePersistenceDenoKv',
+        async () => {
+            const factory = denoKv(baseOptions);
+            await using instance = (await factory
+                .create()) as CachePersistenceDenoKv;
+            assert(instance instanceof CachePersistenceDenoKv);
+        },
+    );
+
+    await t.step('options pass through to the instance', async () => {
+        const factory = denoKv({ ...baseOptions, maxPersistenceTtlMs: 60_000 });
+        await using instance = (await factory
+            .create()) as CachePersistenceDenoKv;
+        assertEquals(
+            (instance as unknown as { _maxPersistenceTtlMs: number })
+                ._maxPersistenceTtlMs,
+            60_000,
+        );
+    });
+
+    await t.step('no memoization across create() calls', async () => {
+        const factory = denoKv(baseOptions);
+        await using a = (await factory.create()) as CachePersistenceDenoKv;
+        await using b = (await factory.create()) as CachePersistenceDenoKv;
+        assert(a !== b);
+    });
+
+    await t.step('no state shared across factory-function calls', () => {
+        const fA = denoKv(baseOptions);
+        const fB = denoKv(baseOptions);
+        assert(fA !== fB);
+    });
+
+    await t.step('does not mutate the options argument', async () => {
+        const opts: CachePersistenceDenoKvOptions = {
+            ...baseOptions,
+            maxPersistenceTtlMs: 60_000,
+            staleRetention: 'retain' as const,
+        };
+        const snapshot = { ...opts };
+        await using _instance = (await denoKv(opts)
+            .create()) as CachePersistenceDenoKv;
+        assertEquals(opts, snapshot);
+    });
+});
+
 Object.defineProperty(globalThis, 'caches', {
     value: new CacheStorage(
         {
@@ -180,4 +243,4 @@ Object.defineProperty(globalThis, 'caches', {
     ),
 });
 
-await import('./cache-storage.test.ts');
+await import('../_shared/cache-storage.test.ts');

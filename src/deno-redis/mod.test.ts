@@ -1,13 +1,16 @@
 import { assert, assertEquals } from '@std/assert';
 import { delay } from '@std/async/delay';
-import { CachePersistenceRedis } from './cache-persistence-redis.ts';
-import { CacheStorage } from './cache-storage.ts';
-import { nextPort, startRedis } from './test-utils.ts';
-import type { CacheLike, CachePersistenceRedisOptions } from './types.ts';
+import { CachePersistenceDenoRedis } from './mod.ts';
+import { CacheStorage } from '../core/cache-storage.ts';
+import { nextPort, startRedis } from '../core/test-utils.ts';
+import type {
+    CacheLike,
+    CachePersistenceDenoRedisOptions,
+} from '../core/types.ts';
 
 /**
  * Build a fresh `CacheStorage` whose backing persistence is a
- * `CachePersistenceRedis` configured per call.
+ * `CachePersistenceDenoRedis` configured per call.
  *
  * The behavioral tests below observe configuration solely through the
  * W3C-style `Cache` surface (`put` / `match` / `matchAll`) plus the
@@ -27,11 +30,11 @@ import type { CacheLike, CachePersistenceRedisOptions } from './types.ts';
  *    `x-cachestorage-stale: 1` marker.
  */
 function createStorage(
-    options?: Partial<CachePersistenceRedisOptions>,
+    options?: Partial<CachePersistenceDenoRedisOptions>,
 ): CacheStorage {
     return new CacheStorage({
         create: async () =>
-            new CachePersistenceRedis({
+            new CachePersistenceDenoRedis({
                 port,
                 hostname: '127.0.0.1',
                 ...options,
@@ -54,7 +57,7 @@ function nextCacheName(): string {
  * suite sees a clean view of `caches.keys()`.
  */
 async function createCache(
-    options?: Partial<CachePersistenceRedisOptions>,
+    options?: Partial<CachePersistenceDenoRedisOptions>,
 ): Promise<CacheLike> {
     const storage = createStorage(options);
     const name = nextCacheName();
@@ -169,16 +172,87 @@ Deno.test('Redis — staleRetention=retain', async (t) => {
     );
 });
 
+import denoRedisDefault, { CachePersistenceRedis, denoRedis } from './mod.ts';
+
+Deno.test('denoRedis factory', async (t) => {
+    const baseOptions = {
+        port,
+        hostname: '127.0.0.1',
+        max: 1,
+        min: 1,
+    } as const;
+
+    await t.step('default and named exports are identity-equal', () => {
+        assertEquals(denoRedisDefault, denoRedis);
+    });
+
+    await t.step(
+        'factory.create() returns CachePersistenceDenoRedis',
+        async () => {
+            const factory = denoRedis({ ...baseOptions });
+            await using instance = (await factory
+                .create()) as CachePersistenceDenoRedis;
+            assert(instance instanceof CachePersistenceDenoRedis);
+        },
+    );
+
+    await t.step('options pass through to the instance', async () => {
+        const factory = denoRedis({
+            ...baseOptions,
+            maxPersistenceTtlMs: 60_000,
+        });
+        await using instance = (await factory
+            .create()) as CachePersistenceDenoRedis;
+        assertEquals(
+            (instance as unknown as { _maxPersistenceTtlMs: number })
+                ._maxPersistenceTtlMs,
+            60_000,
+        );
+    });
+
+    await t.step('no memoization across create() calls', async () => {
+        const factory = denoRedis({ ...baseOptions });
+        await using a = (await factory.create()) as CachePersistenceDenoRedis;
+        await using b = (await factory.create()) as CachePersistenceDenoRedis;
+        assert(a !== b);
+    });
+
+    await t.step('no state shared across factory-function calls', () => {
+        const fA = denoRedis({ ...baseOptions });
+        const fB = denoRedis({ ...baseOptions });
+        assert(fA !== fB);
+    });
+
+    await t.step('does not mutate the options argument', async () => {
+        const opts: CachePersistenceDenoRedisOptions = {
+            ...baseOptions,
+            maxPersistenceTtlMs: 60_000,
+            staleRetention: 'retain' as const,
+        };
+        const snapshot = { ...opts };
+        await using _instance = (await denoRedis(opts)
+            .create()) as CachePersistenceDenoRedis;
+        assertEquals(opts, snapshot);
+    });
+
+    await t.step(
+        'CachePersistenceRedis alias resolves to the same class identity',
+        () => {
+            assertEquals(CachePersistenceRedis, CachePersistenceDenoRedis);
+        },
+    );
+});
+
 Object.defineProperty(globalThis, 'caches', {
     value: new CacheStorage(
         {
             create: async () =>
-                new CachePersistenceRedis({ port, hostname: '127.0.0.1' }),
+                new CachePersistenceDenoRedis({ port, hostname: '127.0.0.1' }),
         },
         (name, value) => (name === 'user-agent' ? 'firefox' : value),
     ),
 });
 
-await import('./cache-storage.test.ts');
+await import('../_shared/cache-storage.test.ts');
 
 // stopRedis(server);

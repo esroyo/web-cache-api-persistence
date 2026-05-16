@@ -112,16 +112,31 @@ stated motivation.
 - **Source layout adopts a pseudo-monorepo shape.**
   - **`src/core/`** holds the layered foundation: `cache.ts`,
     `cache-storage.ts`, `cache-persistence-base.ts`, `types.ts`, `webidl.ts`,
-    `test-utils.ts`, the cross-backend `cache-persistence.bench.ts`, and core
-    tests (e.g. `cache-storage.test.ts`).
+    `test-utils.ts`, and tests that exercise `core/` directly without depending
+    on a backend (e.g. `create-cache-storage.test.ts`). `src/core/` SHALL NOT
+    contain files that import from `src/<backend>/` (the only permitted
+    exception is the no-args default of `CacheStorage`, which imports
+    `CachePersistenceMemory`).
   - **`src/<backend>/`** (sibling of `core/`) holds each backend's
     self-contained module: a `mod.ts` public entry, colocated tests
     (`mod.test.ts`), and any backend-internal helpers. For deno-redis this
     includes `instrument-redis-client.ts` and its colocated test.
-  - The directories at `src/<backend>/` are siblings of `src/core/`, not
-    children. The "core" label is a logical layer indicator; backends are
-    independent peers. (See design Decision 8 for the rationale on not adding a
-    `src/persistence/` wrapper directory.)
+  - **`src/_shared/`** (sibling of `core/` and the backend directories) holds
+    test infrastructure shared across backends — specifically, the
+    parameterised-by-backend `CacheStorage` conformance suite
+    (`cache-storage.test.ts`), which is re-imported by each backend's
+    `mod.test.ts` after that file sets a backend-specific `globalThis.caches`.
+    The leading underscore signals "internal, not part of any public sub-path,
+    not part of `core/`". `src/_shared/` is production-code-free.
+  - **`bench/`** (sibling of `src/`, at the repo root) holds the cross-backend
+    benchmark `cache-persistence.bench.ts`. It imports every backend and is
+    therefore not in `src/core/` (which would invert the dependency direction).
+    It's a dev-only artifact and is excluded from the JSR publish via
+    `deno.json`'s `publish.exclude`.
+  - The directories at `src/<backend>/` are siblings of `src/core/` and
+    `src/_shared/`, not children. The "core" label is a logical layer indicator;
+    backends are independent peers. (See design Decision 8 for the rationale on
+    not adding a `src/persistence/` wrapper directory.)
 - **The `noop` adapter behavior is unchanged** for this change. The verbose
   per-call `console.log` output of `CachePersistenceNoop` is out of scope and
   will be revisited separately.
@@ -172,14 +187,22 @@ stated motivation.
 
 - `src/cache.ts` → `src/core/cache.ts`
 - `src/cache-storage.ts` → `src/core/cache-storage.ts`
-- `src/cache-storage.test.ts` → `src/core/cache-storage.test.ts`
 - `src/cache-persistence-base.ts` → `src/core/cache-persistence-base.ts`
 - `src/types.ts` → `src/core/types.ts`
 - `src/webidl.ts` → `src/core/webidl.ts`
 - `src/test-utils.ts` → `src/core/test-utils.ts`
-- `src/cache-persistence.bench.ts` → `src/core/cache-persistence.bench.ts` (the
-  bench exercises every backend; it stays cross-cutting and lives in `core/`
-  rather than any single backend directory)
+
+**Affected code (moves into `src/_shared/`):**
+
+- `src/cache-storage.test.ts` → `src/_shared/cache-storage.test.ts` (this is not
+  a unit test of any single file — it's a parameterised conformance suite that
+  each backend's `mod.test.ts` re-imports after setting `globalThis.caches`;
+  co-locating it with `core/` would imply it tests `core/` directly, which is
+  misleading)
+- `src/cache-persistence.bench.ts` → `bench/cache-persistence.bench.ts` (the
+  bench exercises every backend; placing it in `src/core/` would invert the
+  dependency direction, so it lives outside `src/` as a dev-only artifact at the
+  repo root; excluded from JSR via `publish.exclude`)
 
 **Affected code (within-file changes):**
 

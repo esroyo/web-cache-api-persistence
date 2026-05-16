@@ -8,14 +8,12 @@ controlled at construction time via a `staleRetention` option on each
 implementation's options interface, and interacts with `maxPersistenceTtlMs`
 (defined in the `cache-persistence-storage` capability) to bound storage
 lifetime independent of HTTP expiration.
-
 ## Requirements
-
 ### Requirement: Bundled persistence implementations SHALL accept a staleRetention option
 
 `CachePersistenceBaseOptions` SHALL include an optional `staleRetention` field
-of type `'evict' | 'retain'`. The Memory, Deno KV, and Redis persistence options
-interfaces SHALL inherit this field via extension of
+of type `'evict' | 'retain'`. The Memory, Deno KV, and Deno Redis persistence
+options interfaces SHALL inherit this field via extension of
 `CachePersistenceBaseOptions`. The option's type SHALL be a string union (not a
 boolean) so additional non-binary modes can be added without breaking changes.
 
@@ -37,9 +35,9 @@ boolean) so additional non-binary modes can be added without breaking changes.
 - **THEN** construction does not throw and `get` yields the entry (length `1`);
   under `'evict'` the equivalent setup yields `0`
 
-#### Scenario: option is accepted by Redis persistence and drives retention behavior
+#### Scenario: option is accepted by Deno Redis persistence and drives retention behavior
 
-- **WHEN** a `CachePersistenceRedis` is constructed with
+- **WHEN** a `CachePersistenceDenoRedis` is constructed with
   `{ staleRetention: 'retain', port, hostname: '127.0.0.1' }`, a `put` with
   `Cache-Control: max-age=1` is performed, real time advances 1100 ms, and `get`
   is consumed
@@ -80,10 +78,10 @@ change from this proposal without explicitly opting in.
 - **THEN** the captured `options.expireIn` equals the value returned by
   `_expiresIn(response)` (within ±50 ms)
 
-#### Scenario: omitting the option preserves Redis deletion behavior
+#### Scenario: omitting the option preserves Deno Redis deletion behavior
 
-- **WHEN** `new CachePersistenceRedis()` (with only connection options) accepts
-  a `put` with finite max-age, and the Redis pipeline's `sendCommand` is
+- **WHEN** `new CachePersistenceDenoRedis()` (with only connection options)
+  accepts a `put` with finite max-age, and the Redis pipeline's `sendCommand` is
   observed via a `spy` (similar to the existing `instrumentRedisClient` pattern)
   recording every command
 - **THEN** the recorded command list contains at least one entry where the
@@ -97,7 +95,7 @@ specified (explicitly or by default), invoke their eviction primitive with a
 delay equal to `_expiresIn(response)`, which is
 `min(httpExpiresIn, maxPersistenceTtlMs)`. The Memory implementation MUST call
 `setTimeout` with this delay. The Deno KV implementation MUST pass
-`{ expireIn: <delay> }` to `setBlob` when writing the value blob. The Redis
+`{ expireIn: <delay> }` to `setBlob` when writing the value blob. The Deno Redis
 implementation MUST issue `PEXPIRE` with this delay (ms) on the relevant keys.
 
 #### Scenario: Memory evict mode schedules setTimeout with the computed delay
@@ -115,10 +113,10 @@ implementation MUST issue `PEXPIRE` with this delay (ms) on the relevant keys.
   for `Cache-Control: max-age=60` while the underlying `setBlob` is spied
 - **THEN** the spy's recorded call args show `options.expireIn === 60_000 ± 50`
 
-#### Scenario: Redis evict mode issues PEXPIRE with the computed delay
+#### Scenario: Deno Redis evict mode issues PEXPIRE with the computed delay
 
-- **WHEN** a Redis persistence with `staleRetention: 'evict'` accepts a `put`
-  for `Cache-Control: max-age=60` while `sendCommand` is spied
+- **WHEN** a Deno Redis persistence with `staleRetention: 'evict'` accepts a
+  `put` for `Cache-Control: max-age=60` while `sendCommand` is spied
 - **THEN** the captured command sequence contains at least one
   `['PEXPIRE', <key>, <ms>]` invocation where `<ms> === 60_000 ± 50`
 
@@ -170,9 +168,9 @@ explicitly incorrect.
   `_maxPersistenceTtlMs` (which equals `maxPersistenceTtlMs`), per existing
   behavior
 
-#### Scenario: Redis retain mode issues PEXPIRE with maxPersistenceTtlMs
+#### Scenario: Deno Redis retain mode issues PEXPIRE with maxPersistenceTtlMs
 
-- **WHEN** a Redis persistence with
+- **WHEN** a Deno Redis persistence with
   `{ staleRetention: 'retain', maxPersistenceTtlMs: 60_000, port, hostname: '127.0.0.1' }`
   accepts a `put` for `Cache-Control: max-age=1` while `sendCommand` is spied
 - **THEN** the captured command sequence contains at least one
@@ -184,8 +182,9 @@ explicitly incorrect.
 
 - **WHEN** an entry has been put under
   `{ staleRetention: 'retain', maxPersistenceTtlMs: 2_592_000_000 }` with
-  `Cache-Control: max-age=1`, `FakeTime` (Memory) or real time (Deno KV / Redis)
-  advances past 1100 ms, and `get(cacheName, request)` is consumed into an array
+  `Cache-Control: max-age=1`, `FakeTime` (Memory) or real time (Deno KV / Deno
+  Redis) advances past 1100 ms, and `get(cacheName, request)` is consumed into
+  an array
 - **THEN** the array has length `1` and
   `result[0][1].headers.get('x-cachestorage-stale') === '1'`
 
@@ -252,3 +251,4 @@ stores nothing.
   `get(cacheName, request)` is consumed into an array
 - **THEN** both `put` calls return `false`, both arrays have length `0`, and
   neither construction throws
+

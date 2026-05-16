@@ -8,6 +8,31 @@ for commit guidelines.
 
 ### ⚠ BREAKING CHANGES
 
+- **`mod.ts` no longer re-exports backend persistence classes.** Imports of
+  `CachePersistenceMemory`, `CachePersistenceDenoKv`, `CachePersistenceNoop`,
+  and `CachePersistenceDenoRedis` (and the deprecated alias
+  `CachePersistenceRedis`) from the package root will no longer resolve.
+  Consumers must update each import to the matching sub-path:
+
+  | Old import                                                                   | New import                                                                                                                                         |
+  | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `import { CachePersistenceMemory } from 'jsr:.../web-cache-api-persistence'` | `import { CachePersistenceMemory } from 'jsr:.../web-cache-api-persistence/memory'`                                                                |
+  | `import { CachePersistenceDenoKv } from 'jsr:.../web-cache-api-persistence'` | `import { CachePersistenceDenoKv } from 'jsr:.../web-cache-api-persistence/deno-kv'`                                                               |
+  | `import { CachePersistenceNoop } from 'jsr:.../web-cache-api-persistence'`   | `import { CachePersistenceNoop } from 'jsr:.../web-cache-api-persistence/noop'`                                                                    |
+  | `import { CachePersistenceRedis } from 'jsr:.../web-cache-api-persistence'`  | `import { CachePersistenceRedis } from 'jsr:.../web-cache-api-persistence/deno-redis'` (deprecated alias; `CachePersistenceDenoRedis` recommended) |
+
+  The library is pre-1.0; this is the right release in which to accept the cost.
+  Keeping the root re-exports would have defeated the lazy-resolution property
+  motivating the change — re-exports under Deno/JSR are evaluated eagerly, so
+  any consumer importing _anything_ from the root would still pull every
+  backend's transitive dependency graph into their module graph.
+- **`CachePersistenceRedis` is renamed to `CachePersistenceDenoRedis`** (and
+  `CachePersistenceRedisOptions` → `CachePersistenceDenoRedisOptions`). The
+  class is Deno-specific (uses `@db/redis`), and the old name squatted the
+  natural identifier a future Node/ioredis variant would want. The old names
+  remain exported as `@deprecated` aliases from the new `/deno-redis` sub-path,
+  pointing at the same class identity, so `instanceof` against either name keeps
+  working. Removal of the aliases is targeted for the next major release.
 - **Responses without `Cache-Control` and without `Expires` are no longer
   silently cached for 30 days.** The previous behavior was an undocumented
   heuristic-freshness policy that violated
@@ -25,6 +50,22 @@ for commit guidelines.
 
 ### Features
 
+- Add `createCacheStorage({ persistence, headerNormalizer?, Cache? })` helper
+  exported from `mod.ts`, plus the `CreateCacheStorageOptions` type. The
+  `persistence` field accepts the same
+  `CachePersistenceFactory |
+  CachePersistenceConstructable` union the existing
+  `CacheStorage` constructor's first positional parameter already accepts — the
+  helper introduces no new type, only a named-options-bag signature that's
+  easier to extend over time. `new CacheStorage(...)` is unchanged and still
+  supported.
+- Add per-backend sub-path exports — `/memory`, `/noop`, `/deno-kv`,
+  `/deno-redis`. Each sub-path is the **canonical home** for its backend and
+  exports a default factory function (e.g. `memory`, `denoRedis`), a
+  same-identity named factory under the same name, the persistence class (e.g.
+  `CachePersistenceMemory`, `CachePersistenceDenoRedis`), and the options type.
+  Consumers who import only `/memory` no longer pay the dependency-resolution
+  cost for `@db/redis`, `@kitsonk/kv-toolbox`, `generic-pool`, etc.
 - Add `staleRetention` (`'evict' | 'retain'`) and `maxPersistenceTtlMs` (number,
   default 30 days) options on bundled persistence implementations.
   `staleRetention: 'retain'` makes the cache W3C-spec compliant: entries persist
@@ -33,6 +74,27 @@ for commit guidelines.
   bound on entry storage lifetime, applied in both modes. Deno KV's native
   30-day `expireIn` cap is documented as a known backend constraint on
   `maxPersistenceTtlMs` values exceeding it.
+
+### Moved
+
+- Source-layout restructure to a pseudo-monorepo shape. The layered foundation
+  now lives under `src/core/` (`cache.ts`, `cache-storage.ts`,
+  `cache-persistence-base.ts`, `types.ts`, `webidl.ts`, `test-utils.ts`,
+  `cache-persistence.bench.ts`, plus core tests). Each backend lives in its own
+  sibling directory (`src/memory/`, `src/noop/`, `src/deno-kv/`,
+  `src/deno-redis/`) with a `mod.ts` entry point and a colocated `mod.test.ts`.
+  The Redis-specific OpenTelemetry instrumentation (`instrument-redis-client.ts`
+  and its test) moved from `src/` to `src/deno-redis/` where it belongs. The
+  on-disk layout now mirrors the public sub-path layout and each backend is a
+  self-contained unit.
+
+### Deprecated
+
+- `CachePersistenceRedis` and `CachePersistenceRedisOptions` on the
+  `/deno-redis` sub-path. Both are re-exports of the renamed
+  `CachePersistenceDenoRedis` class / `CachePersistenceDenoRedisOptions`
+  interface; runtime identity is unchanged. Targeted for removal in the next
+  major release.
 
 ### Bug Fixes
 

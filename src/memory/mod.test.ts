@@ -1,8 +1,11 @@
 import { assert, assertEquals } from '@std/assert';
 import { FakeTime } from '@std/testing/time';
-import { CachePersistenceMemory } from './cache-persistence-memory.ts';
-import { CacheStorage } from './cache-storage.ts';
-import type { CacheLike, CachePersistenceMemoryOptions } from './types.ts';
+import { CachePersistenceMemory } from './mod.ts';
+import { CacheStorage } from '../core/cache-storage.ts';
+import type {
+    CacheLike,
+    CachePersistenceMemoryOptions,
+} from '../core/types.ts';
 
 /**
  * Build a fresh `CacheStorage` whose backing persistence is a
@@ -257,6 +260,56 @@ Deno.test('Memory — staleRetention=retain', async (t) => {
     );
 });
 
+import memoryDefault, { memory } from './mod.ts';
+
+Deno.test('memory factory', async (t) => {
+    await t.step('default and named exports are identity-equal', () => {
+        assertEquals(memoryDefault, memory);
+    });
+
+    await t.step(
+        'factory.create() returns CachePersistenceMemory',
+        async () => {
+            const factory = memory();
+            const instance = await factory.create();
+            assert(instance instanceof CachePersistenceMemory);
+        },
+    );
+
+    await t.step('options pass through to the instance', async () => {
+        const factory = memory({ maxPersistenceTtlMs: 60_000 });
+        const instance = await factory.create();
+        assertEquals(
+            (instance as unknown as { _maxPersistenceTtlMs: number })
+                ._maxPersistenceTtlMs,
+            60_000,
+        );
+    });
+
+    await t.step('no memoization across create() calls', async () => {
+        const factory = memory();
+        const a = await factory.create();
+        const b = await factory.create();
+        assert(a !== b);
+    });
+
+    await t.step('no state shared across factory-function calls', () => {
+        const fA = memory();
+        const fB = memory();
+        assert(fA !== fB);
+    });
+
+    await t.step('does not mutate the options argument', async () => {
+        const opts = {
+            maxPersistenceTtlMs: 60_000,
+            staleRetention: 'retain' as const,
+        };
+        const snapshot = { ...opts };
+        await memory(opts).create();
+        assertEquals(opts, snapshot);
+    });
+});
+
 Object.defineProperty(globalThis, 'caches', {
     value: new CacheStorage(
         undefined,
@@ -264,4 +317,4 @@ Object.defineProperty(globalThis, 'caches', {
     ),
 });
 
-await import('./cache-storage.test.ts');
+await import('../_shared/cache-storage.test.ts');

@@ -1,6 +1,6 @@
 import opentelemetry, { SpanKind } from '@opentelemetry/api';
 import type { RedisReply, RedisValue, SendCommandOptions } from '@db/redis';
-import type { OpenTelemetry, RedisClient } from './types.ts';
+import type { OpenTelemetry, RedisClient } from '../core/types.ts';
 
 type PartialOpenTelemetry = {
     trace: {

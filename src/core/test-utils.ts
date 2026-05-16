@@ -106,7 +106,7 @@ async function waitForPort(port: number): Promise<void> {
 }
 
 function tempPath(fileName: string): string {
-    const url = new URL(`./../tmp/${fileName}`, import.meta.url);
+    const url = new URL(`../../tmp/${fileName}`, import.meta.url);
     return url.pathname;
 }
 

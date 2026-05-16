@@ -11,9 +11,7 @@ on the configured `staleRetention` mode (defined in the `cache-freshness-policy`
 capability). It also pins the public interface signatures
 (`CachePersistenceLike`, `CacheLike`) and the `x-cachestorage-stale` marker
 semantics.
-
 ## Requirements
-
 ### Requirement: Storage SHALL preserve expiration metadata independent of eviction policy
 
 Every bundled `CachePersistenceLike` implementation SHALL write the absolute
@@ -115,11 +113,11 @@ body. Storage-lifetime clamping SHALL live in the separate
 `CachePersistenceBaseOptions` SHALL include an optional
 `maxPersistenceTtlMs?: number` field, defaulting to `2_592_000_000` (30 days).
 All four bundled persistence classes — `CachePersistenceMemory`,
-`CachePersistenceDenoKv`, `CachePersistenceRedis`, and `CachePersistenceNoop` —
-SHALL inherit this option via their options-interface extension chain. The
-provided value MUST be stored on the protected `_maxPersistenceTtlMs` field of
-`CachePersistenceBase` so existing subclasses that read
-`this._maxPersistenceTtlMs` continue to work.
+`CachePersistenceDenoKv`, `CachePersistenceDenoRedis`, and
+`CachePersistenceNoop` — SHALL inherit this option via their options-interface
+extension chain. The provided value MUST be stored on the protected
+`_maxPersistenceTtlMs` field of `CachePersistenceBase` so existing subclasses
+that read `this._maxPersistenceTtlMs` continue to work.
 
 #### Scenario: default value is 2_592_000_000
 
@@ -142,10 +140,10 @@ provided value MUST be stored on the protected `_maxPersistenceTtlMs` field of
 - **THEN**
   `(instance as unknown as { _maxPersistenceTtlMs: number })._maxPersistenceTtlMs === 60_000`
 
-#### Scenario: provided value flows to the protected field for Redis
+#### Scenario: provided value flows to the protected field for Deno Redis
 
 - **WHEN**
-  `new CachePersistenceRedis({ maxPersistenceTtlMs: 60_000, port, hostname: '127.0.0.1' })`
+  `new CachePersistenceDenoRedis({ maxPersistenceTtlMs: 60_000, port, hostname: '127.0.0.1' })`
   is constructed
 - **THEN**
   `(instance as unknown as { _maxPersistenceTtlMs: number })._maxPersistenceTtlMs === 60_000`
@@ -332,3 +330,4 @@ this header set by the storage tier.
   `cache.match(request)` is awaited
 - **THEN** the returned value is defined (not `undefined`) and its
   `headers.get('x-cachestorage-stale')` returns `'1'`
+

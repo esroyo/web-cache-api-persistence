@@ -1,19 +1,22 @@
 import { createPool, type Pool } from 'generic-pool';
 import { connect, type Redis } from '@db/redis';
 import type {
+    CachePersistenceDenoRedisOptions,
+    CachePersistenceFactory,
     CachePersistenceLike,
-    CachePersistenceRedisOptions,
     PlainReqRes,
-} from './types.ts';
-import { CachePersistenceBase } from './cache-persistence-base.ts';
-import * as webidl from './webidl.ts';
+} from '../core/types.ts';
+import { CachePersistenceBase } from '../core/cache-persistence-base.ts';
+import * as webidl from '../core/webidl.ts';
 import * as sorted from 'sorted';
 
-export class CachePersistenceRedis extends CachePersistenceBase
+export type { CachePersistenceDenoRedisOptions };
+
+export class CachePersistenceDenoRedis extends CachePersistenceBase
     implements CachePersistenceLike {
-    protected override _options: CachePersistenceRedisOptions;
+    protected override _options: CachePersistenceDenoRedisOptions;
     protected _dbPool: Pool<Redis>;
-    protected override get _defaultOptions(): CachePersistenceRedisOptions {
+    protected override get _defaultOptions(): CachePersistenceDenoRedisOptions {
         return {
             ...super._defaultOptions,
             // Redis defaults
@@ -30,7 +33,7 @@ export class CachePersistenceRedis extends CachePersistenceBase
         };
     }
 
-    constructor(options?: CachePersistenceRedisOptions) {
+    constructor(options?: CachePersistenceDenoRedisOptions) {
         super(options);
         this._options = { ...this._defaultOptions, ...options };
         this._dbPool = createPool<Redis>({
@@ -342,3 +345,29 @@ export class CachePersistenceRedis extends CachePersistenceBase
         return this._joinKey(splitKey.slice(0, 3));
     }
 }
+
+/**
+ * Factory for the Deno Redis persistence backend.
+ *
+ * Returns a {@link CachePersistenceFactory} suitable for
+ * {@link createCacheStorage} or `new CacheStorage(...)`.
+ */
+export function denoRedis(
+    options?: CachePersistenceDenoRedisOptions,
+): CachePersistenceFactory {
+    return { create: async () => new CachePersistenceDenoRedis(options) };
+}
+
+export default denoRedis;
+
+/**
+ * @deprecated Renamed to `CachePersistenceDenoRedis`. Will be removed in the
+ * next major release.
+ */
+export { CachePersistenceDenoRedis as CachePersistenceRedis };
+
+/**
+ * @deprecated Renamed to `CachePersistenceDenoRedisOptions`. Will be removed in
+ * the next major release.
+ */
+export type { CachePersistenceDenoRedisOptions as CachePersistenceRedisOptions };
