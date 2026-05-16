@@ -245,7 +245,12 @@ Object.defineProperty(globalThis, "caches", {
   value: new CacheStorage(
     {
       create: async () =>
-        new CachePersistenceDenoRedis({ port, hostname: "127.0.0.1" }),
+        new CachePersistenceDenoRedis({
+          port,
+          hostname: "127.0.0.1",
+          max: 1,
+          min: 1,
+        }),
     },
     (name, value) => (name === "user-agent" ? "firefox" : value),
   ),

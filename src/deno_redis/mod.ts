@@ -269,6 +269,7 @@ export class CachePersistenceDenoRedis extends CachePersistenceBase
       });
     }
     const results = await pl.flush() as Array<Uint8Array>;
+    await this._dbPool.release(client);
     const parsed: Array<PlainReqRes | null> = [];
     for (const [idx, result] of Object.entries(results)) {
       if (!result) {
@@ -278,7 +279,6 @@ export class CachePersistenceDenoRedis extends CachePersistenceBase
         parsed.push(this._parse(result) as PlainReqRes);
       }
     }
-    await this._dbPool.release(client);
     return parsed;
   }
 
