@@ -1,244 +1,244 @@
-import { CachePersistenceBase } from '../core/cache-persistence-base.ts';
+import { CachePersistenceBase } from "../core/cache_persistence_base.ts";
 import type {
-    CachePersistenceFactory,
-    CachePersistenceLike,
-    CachePersistenceMemoryOptions,
-    PlainReqRes,
-} from '../core/types.ts';
-import * as webidl from '../core/webidl.ts';
-import * as sorted from 'sorted';
+  CachePersistenceFactory,
+  CachePersistenceLike,
+  CachePersistenceMemoryOptions,
+  PlainReqRes,
+} from "../core/types.ts";
+import * as webidl from "../core/webidl.ts";
+import * as sorted from "sorted";
 
 export type { CachePersistenceMemoryOptions };
 
 export class CachePersistenceMemory extends CachePersistenceBase
-    implements CachePersistenceLike {
-    protected _storage: Record<string, PlainReqRes | Uint8Array> = Object
-        .create(null);
-    protected _indexes: Record<string, Set<string>> = Object.create(null);
-    protected _timers: Record<string, number> = Object.create(null);
-    protected _maxInteger: number = Math.pow(2, 31) - 1;
-    protected override _options: CachePersistenceMemoryOptions;
+  implements CachePersistenceLike {
+  protected _storage: Record<string, PlainReqRes | Uint8Array> = Object
+    .create(null);
+  protected _indexes: Record<string, Set<string>> = Object.create(null);
+  protected _timers: Record<string, number> = Object.create(null);
+  protected _maxInteger: number = Math.pow(2, 31) - 1;
+  protected override _options: CachePersistenceMemoryOptions;
 
-    constructor(options?: CachePersistenceMemoryOptions) {
-        super(options);
-        this._options = { ...this._defaultOptions, ...options };
+  constructor(options?: CachePersistenceMemoryOptions) {
+    super(options);
+    this._options = { ...this._defaultOptions, ...options };
+  }
+
+  async keys(): Promise<string[]> {
+    const cacheNames = new Set<string>();
+    const persistenceKey = (await this._persistenceKey("")).slice(0, -1);
+    for (const key of await this._dbScan(persistenceKey)) {
+      cacheNames.add(this._splitKey(key)[1]);
+    }
+    return [...cacheNames];
+  }
+
+  async put(
+    cacheName: string,
+    request: Request,
+    response: Response,
+  ): Promise<boolean> {
+    const pair = await this._pairToPlain(request, response);
+
+    if (!pair) {
+      return false;
     }
 
-    async keys(): Promise<string[]> {
-        const cacheNames = new Set<string>();
-        const persistenceKey = (await this._persistenceKey('')).slice(0, -1);
-        for (const key of await this._dbScan(persistenceKey)) {
-            cacheNames.add(this._splitKey(key)[1]);
+    const [plainReqRes, expiresIn] = pair;
+
+    const persistenceKey = await this._persistenceKey(
+      cacheName,
+      plainReqRes,
+    );
+
+    await this._dbSet(
+      persistenceKey,
+      plainReqRes,
+      expiresIn,
+    );
+
+    return true;
+  }
+
+  async delete(
+    cacheName: string,
+    request: Request,
+    response?: Response,
+  ): Promise<boolean> {
+    if (!response) {
+      const persistenceKey = await this._persistenceKey(
+        cacheName,
+        request,
+      );
+      const keys = await this._dbKeys(persistenceKey);
+      let hasDeleted = false;
+      for (const key of keys) {
+        if (await this._dbDel(key)) {
+          hasDeleted = true;
         }
-        return [...cacheNames];
+      }
+      return hasDeleted;
     }
 
-    async put(
-        cacheName: string,
-        request: Request,
-        response: Response,
-    ): Promise<boolean> {
-        const pair = await this._pairToPlain(request, response);
+    const persistenceKey = await this._persistenceKey(
+      cacheName,
+      request,
+      response,
+    );
 
-        if (!pair) {
-            return false;
+    return await this._dbDel(persistenceKey);
+  }
+
+  async *get(
+    cacheName: string,
+    request: Request,
+  ): AsyncGenerator<readonly [Request, Response], void, unknown> {
+    const persistenceKey = await this._persistenceKey(cacheName, request);
+    const keys = await this._dbKeys(persistenceKey);
+    for (const key of keys) {
+      const plainReqRes = await this._dbGet(key);
+      if (!plainReqRes) {
+        continue;
+      }
+      const expired = this._hasExpired(plainReqRes);
+      if (expired && this._staleRetention === "evict") {
+        continue;
+      }
+      yield [
+        this._plainToRequest(plainReqRes),
+        this._plainToResponse(plainReqRes, { stale: expired }),
+      ] as const;
+    }
+  }
+
+  [Symbol.asyncIterator](
+    cacheName: string,
+  ): AsyncGenerator<readonly [Request, Response], void, unknown> {
+    const prefix =
+      "Failed to execute '[[Symbol.asyncIterator]]' on 'CachePersistence'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    const instance = this;
+    return (async function* () {
+      const persistenceKey = await instance._persistenceKey(cacheName);
+      const keys = await instance._dbScan(persistenceKey);
+      for (const key of keys) {
+        const plainReqRes = await instance._dbGet(key);
+        if (!plainReqRes) {
+          continue;
         }
-
-        const [plainReqRes, expiresIn] = pair;
-
-        const persistenceKey = await this._persistenceKey(
-            cacheName,
-            plainReqRes,
-        );
-
-        await this._dbSet(
-            persistenceKey,
-            plainReqRes,
-            expiresIn,
-        );
-
-        return true;
-    }
-
-    async delete(
-        cacheName: string,
-        request: Request,
-        response?: Response,
-    ): Promise<boolean> {
-        if (!response) {
-            const persistenceKey = await this._persistenceKey(
-                cacheName,
-                request,
-            );
-            const keys = await this._dbKeys(persistenceKey);
-            let hasDeleted = false;
-            for (const key of keys) {
-                if (await this._dbDel(key)) {
-                    hasDeleted = true;
-                }
-            }
-            return hasDeleted;
+        const expired = instance._hasExpired(plainReqRes);
+        if (expired && instance._staleRetention === "evict") {
+          continue;
         }
+        yield [
+          instance._plainToRequest(plainReqRes),
+          instance._plainToResponse(plainReqRes, { stale: expired }),
+        ] as const;
+      }
+    })();
+  }
 
-        const persistenceKey = await this._persistenceKey(
-            cacheName,
-            request,
-            response,
-        );
-
-        return await this._dbDel(persistenceKey);
+  async [Symbol.asyncDispose](): Promise<void> {
+    for (const timer of Object.values(this._timers)) {
+      clearTimeout(timer);
     }
+  }
 
-    async *get(
-        cacheName: string,
-        request: Request,
-    ): AsyncGenerator<readonly [Request, Response], void, unknown> {
-        const persistenceKey = await this._persistenceKey(cacheName, request);
-        const keys = await this._dbKeys(persistenceKey);
-        for (const key of keys) {
-            const plainReqRes = await this._dbGet(key);
-            if (!plainReqRes) {
-                continue;
-            }
-            const expired = this._hasExpired(plainReqRes);
-            if (expired && this._staleRetention === 'evict') {
-                continue;
-            }
-            yield [
-                this._plainToRequest(plainReqRes),
-                this._plainToResponse(plainReqRes, { stale: expired }),
-            ] as const;
+  protected async _dbScan(key: string[]): Promise<string[]> {
+    const persistenceKey = this._joinKey(key);
+    const found: string[] = [];
+    for (const index in this._indexes) {
+      if (index.startsWith(persistenceKey)) {
+        for (const key of this._indexes[index]) {
+          sorted.add(found, key, this._compareFn);
         }
+      }
     }
+    return found;
+  }
 
-    [Symbol.asyncIterator](
-        cacheName: string,
-    ): AsyncGenerator<readonly [Request, Response], void, unknown> {
-        const prefix =
-            "Failed to execute '[[Symbol.asyncIterator]]' on 'CachePersistence'";
-        webidl.requiredArguments(arguments.length, 1, prefix);
-        const instance = this;
-        return (async function* () {
-            const persistenceKey = await instance._persistenceKey(cacheName);
-            const keys = await instance._dbScan(persistenceKey);
-            for (const key of keys) {
-                const plainReqRes = await instance._dbGet(key);
-                if (!plainReqRes) {
-                    continue;
-                }
-                const expired = instance._hasExpired(plainReqRes);
-                if (expired && instance._staleRetention === 'evict') {
-                    continue;
-                }
-                yield [
-                    instance._plainToRequest(plainReqRes),
-                    instance._plainToResponse(plainReqRes, { stale: expired }),
-                ] as const;
-            }
-        })();
-    }
+  protected async _dbKeys(key: string[]): Promise<string[]> {
+    const persistenceKey = this._joinKey(key);
+    const indexKey = this._indexKey(persistenceKey);
+    const index = this._indexes[indexKey] || [];
+    return [...index].sort();
+  }
 
-    async [Symbol.asyncDispose](): Promise<void> {
-        for (const timer of Object.values(this._timers)) {
-            clearTimeout(timer);
-        }
-    }
+  protected async _dbGet(
+    key: string[] | string,
+  ): Promise<PlainReqRes | null> {
+    const persistenceKey = Array.isArray(key) ? this._joinKey(key) : key;
+    const maybeSerializedPlainReqRes = this._storage[persistenceKey];
+    const plainReqRes = maybeSerializedPlainReqRes instanceof Uint8Array
+      ? this._parse(maybeSerializedPlainReqRes)
+      : maybeSerializedPlainReqRes;
+    return plainReqRes ?? null;
+  }
 
-    protected async _dbScan(key: string[]): Promise<string[]> {
-        const persistenceKey = this._joinKey(key);
-        const found: string[] = [];
-        for (const index in this._indexes) {
-            if (index.startsWith(persistenceKey)) {
-                for (const key of this._indexes[index]) {
-                    sorted.add(found, key, this._compareFn);
-                }
-            }
-        }
-        return found;
+  protected async _dbDel(key: string[] | string): Promise<boolean> {
+    const persistenceKey = Array.isArray(key) ? this._joinKey(key) : key;
+    const hasDeleted = persistenceKey in this._storage;
+    const existingTimer = this._timers[persistenceKey];
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      delete this._timers[persistenceKey];
     }
+    delete this._storage[persistenceKey];
+    const indexKey = this._indexKey(key);
+    const index = this._indexes[indexKey];
+    if (index) {
+      index.delete(persistenceKey);
+      if (!index.size) {
+        delete this._indexes[indexKey];
+      }
+    }
+    return hasDeleted;
+  }
 
-    protected async _dbKeys(key: string[]): Promise<string[]> {
-        const persistenceKey = this._joinKey(key);
-        const indexKey = this._indexKey(persistenceKey);
-        const index = this._indexes[indexKey] || [];
-        return [...index].sort();
-    }
+  protected async _dbSet(
+    key: string[],
+    value: PlainReqRes,
+    expiresIn: number,
+  ): Promise<void> {
+    const persistenceKey = this._joinKey(key);
+    this._storage[persistenceKey] = this._options.compress
+      ? this._serialize(value)
+      : value;
+    const indexKey = this._indexKey(persistenceKey);
+    const index = this._indexes[indexKey] = this._indexes[indexKey] ||
+      new Set<string>();
+    index.add(persistenceKey);
+    this._indexes[indexKey] = index;
+    // The eviction primitive is ALWAYS invoked — what differs between
+    // 'evict' and 'retain' modes is the delay value, computed by
+    // `_evictionDelay`. `expiresIn` is the pure HTTP freshness lifetime
+    // (per `_expiresIn`); `_evictionDelay` applies the storage-policy
+    // clamp / retention override.
+    this._scheduleRemoval(
+      persistenceKey,
+      this._evictionDelay(expiresIn),
+    );
+  }
 
-    protected async _dbGet(
-        key: string[] | string,
-    ): Promise<PlainReqRes | null> {
-        const persistenceKey = Array.isArray(key) ? this._joinKey(key) : key;
-        const maybeSerializedPlainReqRes = this._storage[persistenceKey];
-        const plainReqRes = maybeSerializedPlainReqRes instanceof Uint8Array
-            ? this._parse(maybeSerializedPlainReqRes)
-            : maybeSerializedPlainReqRes;
-        return plainReqRes ?? null;
-    }
+  protected _indexKey(
+    key: string[] | string,
+  ): string {
+    const splitKey = Array.isArray(key) ? key : this._splitKey(key);
+    return this._joinKey(splitKey.slice(0, 3));
+  }
 
-    protected async _dbDel(key: string[] | string): Promise<boolean> {
-        const persistenceKey = Array.isArray(key) ? this._joinKey(key) : key;
-        const hasDeleted = persistenceKey in this._storage;
-        const existingTimer = this._timers[persistenceKey];
-        if (existingTimer) {
-            clearTimeout(existingTimer);
-            delete this._timers[persistenceKey];
-        }
-        delete this._storage[persistenceKey];
-        const indexKey = this._indexKey(key);
-        const index = this._indexes[indexKey];
-        if (index) {
-            index.delete(persistenceKey);
-            if (!index.size) {
-                delete this._indexes[indexKey];
-            }
-        }
-        return hasDeleted;
+  protected _scheduleRemoval(
+    persistenceKey: string,
+    expiresIn: number,
+  ) {
+    const existingTimer = this._timers[persistenceKey];
+    if (existingTimer) {
+      clearTimeout(existingTimer);
     }
-
-    protected async _dbSet(
-        key: string[],
-        value: PlainReqRes,
-        expiresIn: number,
-    ): Promise<void> {
-        const persistenceKey = this._joinKey(key);
-        this._storage[persistenceKey] = this._options.compress
-            ? this._serialize(value)
-            : value;
-        const indexKey = this._indexKey(persistenceKey);
-        const index = this._indexes[indexKey] = this._indexes[indexKey] ||
-            new Set<string>();
-        index.add(persistenceKey);
-        this._indexes[indexKey] = index;
-        // The eviction primitive is ALWAYS invoked — what differs between
-        // 'evict' and 'retain' modes is the delay value, computed by
-        // `_evictionDelay`. `expiresIn` is the pure HTTP freshness lifetime
-        // (per `_expiresIn`); `_evictionDelay` applies the storage-policy
-        // clamp / retention override.
-        this._scheduleRemoval(
-            persistenceKey,
-            this._evictionDelay(expiresIn),
-        );
-    }
-
-    protected _indexKey(
-        key: string[] | string,
-    ): string {
-        const splitKey = Array.isArray(key) ? key : this._splitKey(key);
-        return this._joinKey(splitKey.slice(0, 3));
-    }
-
-    protected _scheduleRemoval(
-        persistenceKey: string,
-        expiresIn: number,
-    ) {
-        const existingTimer = this._timers[persistenceKey];
-        if (existingTimer) {
-            clearTimeout(existingTimer);
-        }
-        this._timers[persistenceKey] = setTimeout(() => {
-            this._dbDel(this._splitKey(persistenceKey));
-        }, Math.min(expiresIn, this._maxInteger));
-    }
+    this._timers[persistenceKey] = setTimeout(() => {
+      this._dbDel(this._splitKey(persistenceKey));
+    }, Math.min(expiresIn, this._maxInteger));
+  }
 }
 
 /**
@@ -248,9 +248,9 @@ export class CachePersistenceMemory extends CachePersistenceBase
  * {@link createCacheStorage} or `new CacheStorage(...)`.
  */
 export function memory(
-    options?: CachePersistenceMemoryOptions,
+  options?: CachePersistenceMemoryOptions,
 ): CachePersistenceFactory {
-    return { create: async () => new CachePersistenceMemory(options) };
+  return { create: async () => new CachePersistenceMemory(options) };
 }
 
 export default memory;

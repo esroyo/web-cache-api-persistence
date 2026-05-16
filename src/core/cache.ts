@@ -1,358 +1,358 @@
 import type {
-    CacheBatchOperation,
-    CacheHeaderNormalizer,
-    CacheLike,
-    CachePersistenceLike,
-} from './types.ts';
-import * as webidl from './webidl.ts';
+  CacheBatchOperation,
+  CacheHeaderNormalizer,
+  CacheLike,
+  CachePersistenceLike,
+} from "./types.ts";
+import * as webidl from "./webidl.ts";
 
 export class Cache implements CacheLike {
-    protected _batchOperations: CacheBatchOperation[] = [];
-    protected _batchProcessing: PromiseWithResolvers<void> | null = null;
+  protected _batchOperations: CacheBatchOperation[] = [];
+  protected _batchProcessing: PromiseWithResolvers<void> | null = null;
 
-    constructor(
-        protected _cacheName: string,
-        protected _persistence: CachePersistenceLike,
-        protected _headerNormalizer: CacheHeaderNormalizer,
-    ) {}
+  constructor(
+    protected _cacheName: string,
+    protected _persistence: CachePersistenceLike,
+    protected _headerNormalizer: CacheHeaderNormalizer,
+  ) {}
 
-    async [Symbol.asyncDispose]() {
-        if (!this._batchProcessing) {
-            this._processBatchOperations();
+  async [Symbol.asyncDispose]() {
+    if (!this._batchProcessing) {
+      this._processBatchOperations();
+    }
+    await this._batchProcessing?.promise;
+    await this._persistence[Symbol.asyncDispose]?.();
+  }
+
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/put)
+   *
+   * [W3C Specification](https://w3c.github.io/ServiceWorker/#dom-cache-put)
+   */
+  async put(
+    requestOrUrl: RequestInfo | URL,
+    response: Response,
+  ): Promise<void> {
+    const prefix = "Failed to execute 'put' on 'Cache'";
+    webidl.requiredArguments(arguments.length, 2, prefix);
+    let request: Request | null = null;
+    if (requestOrUrl instanceof Request) {
+      request = requestOrUrl;
+    } else {
+      request = new Request(requestOrUrl);
+    }
+    const reqUrl = new URL(request.url);
+    if (reqUrl.protocol !== "http:" && reqUrl.protocol !== "https:") {
+      throw new TypeError(
+        `Request url protocol must be 'http:' or 'https:': received '${reqUrl.protocol}'`,
+      );
+    }
+    if (request.method !== "GET") {
+      throw new TypeError("Request method must be GET");
+    }
+    if (response.status === 206) {
+      throw new TypeError("Response status must not be 206");
+    }
+    const varyHeader = response.headers.get("vary");
+    if (varyHeader) {
+      for (const fieldValue of varyHeader.toLowerCase().split(",")) {
+        if (fieldValue.trim() === "*") {
+          throw new TypeError('Vary header must not contain "*"');
         }
-        await this._batchProcessing?.promise;
-        await this._persistence[Symbol.asyncDispose]?.();
+      }
     }
 
-    /**
-     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/put)
-     *
-     * [W3C Specification](https://w3c.github.io/ServiceWorker/#dom-cache-put)
-     */
-    async put(
-        requestOrUrl: RequestInfo | URL,
-        response: Response,
-    ): Promise<void> {
-        const prefix = "Failed to execute 'put' on 'Cache'";
-        webidl.requiredArguments(arguments.length, 2, prefix);
-        let request: Request | null = null;
-        if (requestOrUrl instanceof Request) {
-            request = requestOrUrl;
-        } else {
-            request = new Request(requestOrUrl);
-        }
-        const reqUrl = new URL(request.url);
-        if (reqUrl.protocol !== 'http:' && reqUrl.protocol !== 'https:') {
-            throw new TypeError(
-                `Request url protocol must be 'http:' or 'https:': received '${reqUrl.protocol}'`,
-            );
-        }
-        if (request.method !== 'GET') {
-            throw new TypeError('Request method must be GET');
-        }
-        if (response.status === 206) {
-            throw new TypeError('Response status must not be 206');
-        }
-        const varyHeader = response.headers.get('vary');
-        if (varyHeader) {
-            for (const fieldValue of varyHeader.toLowerCase().split(',')) {
-                if (fieldValue.trim() === '*') {
-                    throw new TypeError('Vary header must not contain "*"');
-                }
-            }
-        }
-
-        if (response.body !== null && response.bodyUsed) {
-            throw new TypeError('Response body is already used');
-        }
-
-        const operation = Promise.withResolvers<undefined>();
-
-        this._enqueueBatchOperation({
-            execute: async () => {
-                const cachedResponse = await this.match(request);
-                if (cachedResponse) {
-                    await this._persistence.delete(
-                        this._cacheName,
-                        request,
-                        cachedResponse,
-                    );
-                }
-
-                await this._persistence.put(this._cacheName, request, response);
-                operation.resolve(undefined);
-            },
-        });
-
-        return operation.promise;
+    if (response.body !== null && response.bodyUsed) {
+      throw new TypeError("Response body is already used");
     }
 
-    /**
-     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/delete)
-     *
-     * [W3C Specification](https://w3c.github.io/ServiceWorker/#cache-delete)
-     */
-    async delete(
-        requestOrUrl: RequestInfo | URL,
-        options?: CacheQueryOptions,
-    ): Promise<boolean> {
-        const prefix = "Failed to execute 'delete' on 'Cache'";
-        webidl.requiredArguments(arguments.length, 1, prefix);
-        let request: Request | null = null;
-        if (requestOrUrl instanceof Request) {
-            request = requestOrUrl;
-            if (!options?.ignoreMethod && request.method !== 'GET') {
-                return false;
-            }
-        } else {
-            request = new Request(requestOrUrl);
+    const operation = Promise.withResolvers<undefined>();
+
+    this._enqueueBatchOperation({
+      execute: async () => {
+        const cachedResponse = await this.match(request);
+        if (cachedResponse) {
+          await this._persistence.delete(
+            this._cacheName,
+            request,
+            cachedResponse,
+          );
         }
 
-        const operation = Promise.withResolvers<boolean>();
+        await this._persistence.put(this._cacheName, request, response);
+        operation.resolve(undefined);
+      },
+    });
 
-        this._enqueueBatchOperation({
-            execute: async () => {
-                let hasDeleted = false;
-                for await (
-                    const [cachedRequest, cachedResponse] of this._persistence
-                        .get(
-                            this._cacheName,
-                            request,
-                        )
-                ) {
-                    if (
-                        this._requestMatchesCachedItem(
-                            request,
-                            cachedRequest,
-                            cachedResponse,
-                            options,
-                        )
-                    ) {
-                        if (
-                            await this._persistence.delete(
-                                this._cacheName,
-                                request,
-                                cachedResponse,
-                            )
-                        ) {
-                            hasDeleted = true;
-                        }
-                    }
-                }
-                operation.resolve(hasDeleted);
-            },
-        });
+    return operation.promise;
+  }
 
-        return operation.promise;
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/delete)
+   *
+   * [W3C Specification](https://w3c.github.io/ServiceWorker/#cache-delete)
+   */
+  async delete(
+    requestOrUrl: RequestInfo | URL,
+    options?: CacheQueryOptions,
+  ): Promise<boolean> {
+    const prefix = "Failed to execute 'delete' on 'Cache'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    let request: Request | null = null;
+    if (requestOrUrl instanceof Request) {
+      request = requestOrUrl;
+      if (!options?.ignoreMethod && request.method !== "GET") {
+        return false;
+      }
+    } else {
+      request = new Request(requestOrUrl);
     }
 
-    /**
-     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/match)
-     *
-     * [W3C Specification](https://w3c.github.io/ServiceWorker/#cache-match)
-     */
-    async match(
-        request: RequestInfo | URL,
-        options?: CacheQueryOptions,
-    ): Promise<Response | undefined> {
-        const prefix = "Failed to execute 'match' on 'Cache'";
-        webidl.requiredArguments(arguments.length, 1, prefix);
-        const p = await this._matchMax(1, false, request, options);
-        if (p.length > 0) {
-            return p[0];
-        }
-    }
+    const operation = Promise.withResolvers<boolean>();
 
-    /**
-     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/matchAll)
-     *
-     * [W3C Specification](https://w3c.github.io/ServiceWorker/#cache-matchall)
-     */
-    async matchAll(
-        requestOrUrl?: RequestInfo | URL,
-        options?: CacheQueryOptions,
-    ): Promise<ReadonlyArray<Response>> {
-        return this._matchMax(
-            Infinity,
-            false,
-            requestOrUrl,
-            options,
-        );
-    }
-
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/add) */
-    async add(url: RequestInfo | URL): Promise<undefined> {
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new TypeError('Bad response status');
-        }
-        await this.put(url, response);
-    }
-
-    /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/addAll) */
-    async addAll(urls: Array<RequestInfo | URL>): Promise<undefined> {
-        for (const url of urls) {
-            await this.add(url);
-        }
-    }
-
-    /**[MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/keys) */
-    async keys(
-        requestOrUrl?: RequestInfo | URL,
-        options?: CacheQueryOptions,
-    ): Promise<ReadonlyArray<Request>> {
-        return this._matchMax(
-            Infinity,
-            true,
-            requestOrUrl,
-            options,
-        );
-    }
-
-    protected async _matchMax(
-        max: number,
-        keys: false,
-        requestOrUrl?: RequestInfo | URL,
-        options?: CacheQueryOptions,
-    ): Promise<ReadonlyArray<Response>>;
-    protected async _matchMax(
-        max: number,
-        keys: true,
-        requestOrUrl?: RequestInfo | URL,
-        options?: CacheQueryOptions,
-    ): Promise<ReadonlyArray<Request>>;
-    protected async _matchMax(
-        max: number,
-        keys: boolean,
-        requestOrUrl?: RequestInfo | URL,
-        options?: CacheQueryOptions,
-    ): Promise<ReadonlyArray<Response | Request>> {
-        let request: Request | null = null;
-        if (requestOrUrl instanceof Request) {
-            request = requestOrUrl;
-            if (!options?.ignoreMethod && request.method !== 'GET') {
-                return [];
-            }
-        } else if (requestOrUrl) {
-            request = new Request(requestOrUrl);
-        }
-
-        const responsesOrRequests: Array<Response | Request> = [];
-        if (!request) {
-            for await (
-                const [cachedRequest, cachedResponse] of this._persistence
-                    [Symbol.asyncIterator](this._cacheName)
-            ) {
-                responsesOrRequests.push(keys ? cachedRequest : cachedResponse);
-                if (responsesOrRequests.length >= max) {
-                    break;
-                }
-            }
-            return responsesOrRequests;
-        }
-
+    this._enqueueBatchOperation({
+      execute: async () => {
+        let hasDeleted = false;
         for await (
-            const [cachedRequest, cachedResponse] of this._persistence.get(
-                this._cacheName,
-                request,
+          const [cachedRequest, cachedResponse] of this._persistence
+            .get(
+              this._cacheName,
+              request,
             )
         ) {
+          if (
+            this._requestMatchesCachedItem(
+              request,
+              cachedRequest,
+              cachedResponse,
+              options,
+            )
+          ) {
             if (
-                this._requestMatchesCachedItem(
-                    request,
-                    cachedRequest,
-                    cachedResponse,
-                    options,
-                )
+              await this._persistence.delete(
+                this._cacheName,
+                request,
+                cachedResponse,
+              )
             ) {
-                responsesOrRequests.push(keys ? cachedRequest : cachedResponse);
-                if (responsesOrRequests.length >= max) {
-                    break;
-                }
+              hasDeleted = true;
             }
+          }
         }
+        operation.resolve(hasDeleted);
+      },
+    });
 
-        return Object.freeze(responsesOrRequests);
+    return operation.promise;
+  }
+
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/match)
+   *
+   * [W3C Specification](https://w3c.github.io/ServiceWorker/#cache-match)
+   */
+  async match(
+    request: RequestInfo | URL,
+    options?: CacheQueryOptions,
+  ): Promise<Response | undefined> {
+    const prefix = "Failed to execute 'match' on 'Cache'";
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    const p = await this._matchMax(1, false, request, options);
+    if (p.length > 0) {
+      return p[0];
+    }
+  }
+
+  /**
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/matchAll)
+   *
+   * [W3C Specification](https://w3c.github.io/ServiceWorker/#cache-matchall)
+   */
+  async matchAll(
+    requestOrUrl?: RequestInfo | URL,
+    options?: CacheQueryOptions,
+  ): Promise<ReadonlyArray<Response>> {
+    return this._matchMax(
+      Infinity,
+      false,
+      requestOrUrl,
+      options,
+    );
+  }
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/add) */
+  async add(url: RequestInfo | URL): Promise<undefined> {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new TypeError("Bad response status");
+    }
+    await this.put(url, response);
+  }
+
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/addAll) */
+  async addAll(urls: Array<RequestInfo | URL>): Promise<undefined> {
+    for (const url of urls) {
+      await this.add(url);
+    }
+  }
+
+  /**[MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/keys) */
+  async keys(
+    requestOrUrl?: RequestInfo | URL,
+    options?: CacheQueryOptions,
+  ): Promise<ReadonlyArray<Request>> {
+    return this._matchMax(
+      Infinity,
+      true,
+      requestOrUrl,
+      options,
+    );
+  }
+
+  protected async _matchMax(
+    max: number,
+    keys: false,
+    requestOrUrl?: RequestInfo | URL,
+    options?: CacheQueryOptions,
+  ): Promise<ReadonlyArray<Response>>;
+  protected async _matchMax(
+    max: number,
+    keys: true,
+    requestOrUrl?: RequestInfo | URL,
+    options?: CacheQueryOptions,
+  ): Promise<ReadonlyArray<Request>>;
+  protected async _matchMax(
+    max: number,
+    keys: boolean,
+    requestOrUrl?: RequestInfo | URL,
+    options?: CacheQueryOptions,
+  ): Promise<ReadonlyArray<Response | Request>> {
+    let request: Request | null = null;
+    if (requestOrUrl instanceof Request) {
+      request = requestOrUrl;
+      if (!options?.ignoreMethod && request.method !== "GET") {
+        return [];
+      }
+    } else if (requestOrUrl) {
+      request = new Request(requestOrUrl);
     }
 
-    /** See https://w3c.github.io/ServiceWorker/#request-matches-cached-item */
-    protected _requestMatchesCachedItem(
-        requestQuery: Request,
-        request: Request,
-        response: Response | null = null,
-        options?: CacheQueryOptions,
-    ): boolean {
-        if (!options?.ignoreMethod && request.method !== 'GET') {
-            return false;
+    const responsesOrRequests: Array<Response | Request> = [];
+    if (!request) {
+      for await (
+        const [cachedRequest, cachedResponse] of this._persistence
+          [Symbol.asyncIterator](this._cacheName)
+      ) {
+        responsesOrRequests.push(keys ? cachedRequest : cachedResponse);
+        if (responsesOrRequests.length >= max) {
+          break;
         }
-        const queryUrl = new URL(requestQuery.url);
-        const cachedUrl = new URL(request.url);
-        if (options?.ignoreSearch) {
-            queryUrl.search = '';
-            cachedUrl.search = '';
+      }
+      return responsesOrRequests;
+    }
+
+    for await (
+      const [cachedRequest, cachedResponse] of this._persistence.get(
+        this._cacheName,
+        request,
+      )
+    ) {
+      if (
+        this._requestMatchesCachedItem(
+          request,
+          cachedRequest,
+          cachedResponse,
+          options,
+        )
+      ) {
+        responsesOrRequests.push(keys ? cachedRequest : cachedResponse);
+        if (responsesOrRequests.length >= max) {
+          break;
         }
-        queryUrl.hash = '';
-        cachedUrl.hash = '';
-        if (queryUrl.toString() !== cachedUrl.toString()) {
-            return false;
-        }
+      }
+    }
+
+    return Object.freeze(responsesOrRequests);
+  }
+
+  /** See https://w3c.github.io/ServiceWorker/#request-matches-cached-item */
+  protected _requestMatchesCachedItem(
+    requestQuery: Request,
+    request: Request,
+    response: Response | null = null,
+    options?: CacheQueryOptions,
+  ): boolean {
+    if (!options?.ignoreMethod && request.method !== "GET") {
+      return false;
+    }
+    const queryUrl = new URL(requestQuery.url);
+    const cachedUrl = new URL(request.url);
+    if (options?.ignoreSearch) {
+      queryUrl.search = "";
+      cachedUrl.search = "";
+    }
+    queryUrl.hash = "";
+    cachedUrl.hash = "";
+    if (queryUrl.toString() !== cachedUrl.toString()) {
+      return false;
+    }
+    if (
+      response === null ||
+      options?.ignoreVary ||
+      !response.headers.has("vary")
+    ) {
+      return true;
+    }
+    const varyHeader = response.headers.get("vary");
+    if (varyHeader) {
+      for (const _fieldValue of varyHeader.toLowerCase().split(",")) {
+        const fieldValue = _fieldValue.trim();
         if (
-            response === null ||
-            options?.ignoreVary ||
-            !response.headers.has('vary')
+          fieldValue === "*" ||
+          this._headerNormalizer(
+              fieldValue,
+              request.headers.get(fieldValue),
+            ) !==
+            this._headerNormalizer(
+              fieldValue,
+              requestQuery.headers.get(fieldValue),
+            )
         ) {
-            return true;
+          return false;
         }
-        const varyHeader = response.headers.get('vary');
-        if (varyHeader) {
-            for (const _fieldValue of varyHeader.toLowerCase().split(',')) {
-                const fieldValue = _fieldValue.trim();
-                if (
-                    fieldValue === '*' ||
-                    this._headerNormalizer(
-                            fieldValue,
-                            request.headers.get(fieldValue),
-                        ) !==
-                        this._headerNormalizer(
-                            fieldValue,
-                            requestQuery.headers.get(fieldValue),
-                        )
-                ) {
-                    return false;
-                }
-            }
-        }
-
-        return true;
+      }
     }
 
-    protected async _processBatchOperations(): Promise<void> {
-        if (!this._batchProcessing) {
-            this._batchProcessing = Promise.withResolvers<void>();
-        }
+    return true;
+  }
 
-        const batchOperation = this._batchOperations.shift();
-        if (!batchOperation) {
-            this._batchProcessing?.resolve();
-            this._batchProcessing = null;
-            return;
-        }
-
-        try {
-            await batchOperation.execute();
-        } catch (e) {
-            console.error(e);
-        } finally {
-            this._processBatchOperations();
-        }
+  protected async _processBatchOperations(): Promise<void> {
+    if (!this._batchProcessing) {
+      this._batchProcessing = Promise.withResolvers<void>();
     }
 
-    protected _enqueueBatchOperation(
-        operation: CacheBatchOperation,
-    ): void {
-        this._batchOperations.push(operation);
-        if (!this._batchProcessing) {
-            this._processBatchOperations();
-        }
+    const batchOperation = this._batchOperations.shift();
+    if (!batchOperation) {
+      this._batchProcessing?.resolve();
+      this._batchProcessing = null;
+      return;
     }
+
+    try {
+      await batchOperation.execute();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      this._processBatchOperations();
+    }
+  }
+
+  protected _enqueueBatchOperation(
+    operation: CacheBatchOperation,
+  ): void {
+    this._batchOperations.push(operation);
+    if (!this._batchProcessing) {
+      this._processBatchOperations();
+    }
+  }
 }
