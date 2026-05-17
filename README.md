@@ -40,7 +40,7 @@ and hopefully remains unaware of the real implementation used.
 
 ### Backends
 
-The package ships four backends, each addressable through a flat sub-path:
+The package ships five backends, each addressable through a flat sub-path:
 
 - `jsr:@esroyo/web-cache-api-persistence/memory` — in-process map; no real
   persistence, good for tests and ephemeral caches.
@@ -52,6 +52,12 @@ The package ships four backends, each addressable through a flat sub-path:
   responses.
 - `jsr:@esroyo/web-cache-api-persistence/deno-redis` — persists through the
   [Deno-native Redis client](https://github.com/denodrivers/redis).
+- `jsr:@esroyo/web-cache-api-persistence/unstorage` — adapter for
+  [unstorage](https://github.com/unjs/unstorage), a universal storage layer with
+  20+ drivers (filesystem, S3, Cloudflare KV, Upstash Redis, Deno KV, etc.).
+  Binary data is stored via `setItemRaw`/`getItemRaw` and **TTL is delegated to
+  native driver** (check per-driver support). The caller owns the unstorage `Storage`
+  instance lifecycle.
 
 Each sub-path exports the same shape: a default factory (e.g. `denoRedis`), a
 same-identity named factory, the persistence class, and the options type. Pick
@@ -59,26 +65,26 @@ the abstraction level you want from one import path:
 
 ```ts
 // Common case: default-imported factory + createCacheStorage.
-import { createCacheStorage } from 'jsr:@esroyo/web-cache-api-persistence';
-import denoRedis from 'jsr:@esroyo/web-cache-api-persistence/deno-redis';
+import { createCacheStorage } from "jsr:@esroyo/web-cache-api-persistence";
+import denoRedis from "jsr:@esroyo/web-cache-api-persistence/deno-redis";
 
 const caches = createCacheStorage({
-    persistence: denoRedis({ port: 6379 }),
+  persistence: denoRedis({ port: 6379 }),
 });
 ```
 
 ```ts
 // Advanced case: named class import (subclassing, instanceof, custom factory).
 import {
-    CachePersistenceDenoRedis,
-    type CachePersistenceDenoRedisOptions,
-} from 'jsr:@esroyo/web-cache-api-persistence/deno-redis';
-import { CacheStorage } from 'jsr:@esroyo/web-cache-api-persistence';
+  CachePersistenceDenoRedis,
+  type CachePersistenceDenoRedisOptions,
+} from "jsr:@esroyo/web-cache-api-persistence/deno-redis";
+import { CacheStorage } from "jsr:@esroyo/web-cache-api-persistence";
 
 const options: CachePersistenceDenoRedisOptions = { port: 6379 };
 
 const caches = new CacheStorage({
-    create: async () => new CachePersistenceDenoRedis(options),
+  create: async () => new CachePersistenceDenoRedis(options),
 });
 ```
 
@@ -91,18 +97,18 @@ low-level form is for custom persistence classes:
 
 ```ts
 import {
-    type CachePersistenceLike,
-    CacheStorage,
-} from 'jsr:@esroyo/web-cache-api-persistence';
+  type CachePersistenceLike,
+  CacheStorage,
+} from "jsr:@esroyo/web-cache-api-persistence";
 
 class MyCachePersistence implements CachePersistenceLike {
-    // ...
+  // ...
 }
 
 const caches = new CacheStorage(MyCachePersistence);
 
 // Usage is similar to the native `caches` property of the Window interface
-const cache = await caches.open('my-cache');
+const cache = await caches.open("my-cache");
 ```
 
 ## The persistence interface
@@ -118,72 +124,72 @@ interfaces, but note It mixes concerns of both and has important differences:
  * Provides a persistence mechanism to be used by the Cache object.
  */
 export interface CachePersistenceLike {
-    /**
-     * The keys() method of the CachePersistence interface fulfills a similar role
-     * to the keys() method of the CacheStorage object. The persistence layer has
-     * to return the cache names for which it currently stores Request/Response pairs.
-     *
-     * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/keys)
-     */
-    keys(): Promise<string[]>;
+  /**
+   * The keys() method of the CachePersistence interface fulfills a similar role
+   * to the keys() method of the CacheStorage object. The persistence layer has
+   * to return the cache names for which it currently stores Request/Response pairs.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/CacheStorage/keys)
+   */
+  keys(): Promise<string[]>;
 
-    /**
-     * The put() method of the CachePersistence interface is used by the
-     * Cache object to store Request/Response pairs.
-     *
-     * The method responsability is limited to store the pair for latter usage.
-     * Therefore, It should not perform checks on the given Request/Response objects.
-     *
-     * The specific implementations should decide the best way to perform
-     * the storage operation, taking into account that for a given request
-     * more than one response can exist.
-     */
-    put(
-        cacheName: string,
-        request: Request,
-        response: Response,
-    ): Promise<boolean>;
+  /**
+   * The put() method of the CachePersistence interface is used by the
+   * Cache object to store Request/Response pairs.
+   *
+   * The method responsability is limited to store the pair for latter usage.
+   * Therefore, It should not perform checks on the given Request/Response objects.
+   *
+   * The specific implementations should decide the best way to perform
+   * the storage operation, taking into account that for a given request
+   * more than one response can exist.
+   */
+  put(
+    cacheName: string,
+    request: Request,
+    response: Response,
+  ): Promise<boolean>;
 
-    /**
-     * The delete() method of the CachePersistence interface is used by the
-     * Cache object to delete an existing Request/Response pair, or all the
-     * pairs associated the the same Request key.
-     */
-    delete(
-        cacheName: string,
-        request: Request,
-        response?: Response,
-    ): Promise<boolean>;
+  /**
+   * The delete() method of the CachePersistence interface is used by the
+   * Cache object to delete an existing Request/Response pair, or all the
+   * pairs associated the the same Request key.
+   */
+  delete(
+    cacheName: string,
+    request: Request,
+    response?: Response,
+  ): Promise<boolean>;
 
-    /**
-     * The get() method of the CachePersistence interface finds the entry whose key
-     * is the request, and returns an async iterator that yields all the
-     * Request/Response pairs associated to the key, one at a time.
-     */
-    get(
-        cacheName: string,
-        request: Request,
-    ): AsyncGenerator<readonly [Request, Response], void, unknown>;
+  /**
+   * The get() method of the CachePersistence interface finds the entry whose key
+   * is the request, and returns an async iterator that yields all the
+   * Request/Response pairs associated to the key, one at a time.
+   */
+  get(
+    cacheName: string,
+    request: Request,
+  ): AsyncGenerator<readonly [Request, Response], void, unknown>;
 
-    /**
-     * The [[Symbol.asyncIterator]] method of the CachePersistence interface returns
-     * an async iterator that yields all the existing Request/Response pairs.
-     * The pairs are returned in the order that they were inserted, that is older
-     * pairs are yielded first.
-     */
-    [Symbol.asyncIterator](cacheName: string): AsyncGenerator<
-        readonly [Request, Response],
-        void,
-        unknown
-    >;
+  /**
+   * The [[Symbol.asyncIterator]] method of the CachePersistence interface returns
+   * an async iterator that yields all the existing Request/Response pairs.
+   * The pairs are returned in the order that they were inserted, that is older
+   * pairs are yielded first.
+   */
+  [Symbol.asyncIterator](cacheName: string): AsyncGenerator<
+    readonly [Request, Response],
+    void,
+    unknown
+  >;
 
-    /**
-     * The [[Symbol.asyncDispose]] optional method of the CachePersistence interface
-     * may be used to dispose internal resources used by the specific implementations.
-     *
-     * It will be called automatically if you open a Cache object with the `using` keyword.
-     */
-    [Symbol.asyncDispose]?(): Promise<void>;
+  /**
+   * The [[Symbol.asyncDispose]] optional method of the CachePersistence interface
+   * may be used to dispose internal resources used by the specific implementations.
+   *
+   * It will be called automatically if you open a Cache object with the `using` keyword.
+   */
+  [Symbol.asyncDispose]?(): Promise<void>;
 }
 ```
 
@@ -245,34 +251,34 @@ header on the materialised `Response`. No non-standard `Cache` method is
 involved — plain W3C `Cache.match()` plus a single header check:
 
 ```ts
-import { createCacheStorage } from '@esroyo/web-cache-api-persistence';
-import memory from '@esroyo/web-cache-api-persistence/memory';
+import { createCacheStorage } from "@esroyo/web-cache-api-persistence";
+import memory from "@esroyo/web-cache-api-persistence/memory";
 
 const caches = createCacheStorage({
-    persistence: memory({ staleRetention: 'retain' }),
+  persistence: memory({ staleRetention: "retain" }),
 });
 
-const cache = await caches.open('v1');
-const req = new Request('https://example.com/api');
+const cache = await caches.open("v1");
+const req = new Request("https://example.com/api");
 
 const response = await cache.match(req);
-if (response && response.headers.get('x-cachestorage-stale') === '1') {
-    // Entry is past its HTTP expiration. Revalidate with the origin using
-    // `ETag` / `Last-Modified` for cheap `304 Not Modified` reuse.
-    const revalidated = await fetch(req.url, {
-        headers: {
-            'if-none-match': response.headers.get('etag') ?? '',
-            'if-modified-since': response.headers.get('last-modified') ?? '',
-        },
-    });
-    // A real 304 handler would merge the freshness headers from the 304
-    // (`Cache-Control`, `Date`, `Expires`, `ETag`, …) onto the cached body
-    // and re-store the merged response (RFC 9111 §4.3.4). That's beyond
-    // this snippet; we just replace the entry with the revalidated payload.
-    // `cache.put` overwrites the stale predecessor for the same request.
-    await cache.put(req, revalidated.clone());
+if (response && response.headers.get("x-cachestorage-stale") === "1") {
+  // Entry is past its HTTP expiration. Revalidate with the origin using
+  // `ETag` / `Last-Modified` for cheap `304 Not Modified` reuse.
+  const revalidated = await fetch(req.url, {
+    headers: {
+      "if-none-match": response.headers.get("etag") ?? "",
+      "if-modified-since": response.headers.get("last-modified") ?? "",
+    },
+  });
+  // A real 304 handler would merge the freshness headers from the 304
+  // (`Cache-Control`, `Date`, `Expires`, `ETag`, …) onto the cached body
+  // and re-store the merged response (RFC 9111 §4.3.4). That's beyond
+  // this snippet; we just replace the entry with the revalidated payload.
+  // `cache.put` overwrites the stale predecessor for the same request.
+  await cache.put(req, revalidated.clone());
 } else if (response) {
-    // Fresh; use as-is.
+  // Fresh; use as-is.
 }
 ```
 
@@ -281,18 +287,18 @@ For a **pure-TTL cache** that ignores HTTP semantics entirely, combine
 
 ```ts
 const caches = createCacheStorage({
-    persistence: memory({
-        staleRetention: 'retain',
-        maxPersistenceTtlMs: 60_000, // 60-second TTL
-    }),
+  persistence: memory({
+    staleRetention: "retain",
+    maxPersistenceTtlMs: 60_000, // 60-second TTL
+  }),
 });
 
-const cache = await caches.open('session');
+const cache = await caches.open("session");
 // Entries live exactly 60 seconds regardless of any `Cache-Control` on the
 // stored Responses. The application can ignore `x-cachestorage-stale`.
 const cached = await cache.match(req);
 if (cached) {
-    // It's been put within the last 60 seconds.
+  // It's been put within the last 60 seconds.
 }
 ```
 

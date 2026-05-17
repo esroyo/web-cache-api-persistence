@@ -1,7 +1,12 @@
 import { CachePersistenceDenoKv } from "../src/deno_kv/mod.ts";
 import { CachePersistenceMemory } from "../src/memory/mod.ts";
 import { CachePersistenceDenoRedis } from "../src/deno_redis/mod.ts";
+import { CachePersistenceUnstorage } from "../src/unstorage/mod.ts";
 import { CacheStorage } from "../src/core/cache_storage.ts";
+import { createStorage } from "unstorage";
+import denoKvDriver from "unstorage/drivers/deno-kv";
+import fsLiteDriver from "unstorage/drivers/fs-lite";
+import redisDriver from "unstorage/drivers/redis";
 import {
   generateRandomRequest,
   generateRandomResponse,
@@ -36,6 +41,43 @@ const cacheKv = await cachesKv.open("default");
 
 const cachesMemory = new CacheStorage(CachePersistenceMemory);
 const cacheMemory = await cachesMemory.open("default");
+
+const storageMem = createStorage();
+const cachesUnstorageMem = new CacheStorage({
+  create: () =>
+    Promise.resolve(new CachePersistenceUnstorage({ storage: storageMem })),
+});
+const cacheUnstorageMem = await cachesUnstorageMem.open("default");
+
+// unstorage deno-kv driver does not support TTL (same limitation as in tests).
+// const storageKv = createStorage({ driver: denoKvDriver() });
+// const cachesUnstorageKv = new CacheStorage({
+//   create: () =>
+//     Promise.resolve(new CachePersistenceUnstorage({ storage: storageKv })),
+// });
+// const cacheUnstorageKv = await cachesUnstorageKv.open("default");
+
+const storageRedis = createStorage({
+  // @ts-expect-error — Deno npm type resolution (#805)
+  driver: redisDriver({ url: `redis://127.0.0.1:${port}` }),
+});
+const cachesUnstorageRedis = new CacheStorage({
+  create: () =>
+    Promise.resolve(
+      new CachePersistenceUnstorage({ storage: storageRedis }),
+    ),
+});
+const cacheUnstorageRedis = await cachesUnstorageRedis.open("default");
+
+const storageFs = createStorage({
+  // @ts-expect-error — Deno npm type resolution (#805)
+  driver: fsLiteDriver({ base: "tmp/bench-fs" }),
+});
+const cachesUnstorageFs = new CacheStorage({
+  create: () =>
+    Promise.resolve(new CachePersistenceUnstorage({ storage: storageFs })),
+});
+const cacheUnstorageFs = await cachesUnstorageFs.open("default");
 
 const cacheNative = await caches.open("default");
 
@@ -143,6 +185,89 @@ Deno.bench("CachePersistenceKv", { group: "put(req, res)" }, async (b) => {
   });
 });
 
+Deno.bench(
+  "CachePersistenceUnstorageMemory",
+  { group: "put(req, res)" },
+  async (b) => {
+    const cache = cacheUnstorageMem;
+    const request = generateRandomRequest();
+    const response = generateRandomResponse();
+    b.start();
+    try {
+      await cache.put(request, response);
+    } catch {}
+    b.end();
+    await cache.delete(request, {
+      ignoreMethod: true,
+      ignoreSearch: true,
+      ignoreVary: true,
+    });
+  },
+);
+
+// unstorage deno-kv driver does not support TTL.
+/*
+Deno.bench(
+  "CachePersistenceUnstorageDenoKv",
+  { group: "put(req, res)" },
+  async (b) => {
+    const cache = cacheUnstorageKv;
+    const request = generateRandomRequest();
+    const response = generateRandomResponse();
+    b.start();
+    try {
+      await cache.put(request, response);
+    } catch {}
+    b.end();
+    await cache.delete(request, {
+      ignoreMethod: true,
+      ignoreSearch: true,
+      ignoreVary: true,
+    });
+  },
+);
+*/
+
+Deno.bench(
+  "CachePersistenceUnstorageRedis",
+  { group: "put(req, res)" },
+  async (b) => {
+    const cache = cacheUnstorageRedis;
+    const request = generateRandomRequest();
+    const response = generateRandomResponse();
+    b.start();
+    try {
+      await cache.put(request, response);
+    } catch {}
+    b.end();
+    await cache.delete(request, {
+      ignoreMethod: true,
+      ignoreSearch: true,
+      ignoreVary: true,
+    });
+  },
+);
+
+Deno.bench(
+  "CachePersistenceUnstorageFs",
+  { group: "put(req, res)" },
+  async (b) => {
+    const cache = cacheUnstorageFs;
+    const request = generateRandomRequest();
+    const response = generateRandomResponse();
+    b.start();
+    try {
+      await cache.put(request, response);
+    } catch {}
+    b.end();
+    await cache.delete(request, {
+      ignoreMethod: true,
+      ignoreSearch: true,
+      ignoreVary: true,
+    });
+  },
+);
+
 // ---------------------------------
 
 Deno.bench(
@@ -192,6 +317,65 @@ Deno.bench("CachePersistenceKv", { group: "match(req)" }, async (b) => {
   b.end();
   await clean();
 });
+
+Deno.bench(
+  "CachePersistenceUnstorageMemory",
+  { group: "match(req)" },
+  async (b) => {
+    const cache = cacheUnstorageMem;
+    const clean = await fillCache(cache);
+    const request = generateRandomRequest();
+    b.start();
+    await cache.match(request);
+    b.end();
+    await clean();
+  },
+);
+
+// unstorage deno-kv driver does not support TTL.
+/*
+Deno.bench(
+  "CachePersistenceUnstorageDenoKv",
+  { group: "match(req)" },
+  async (b) => {
+    const cache = cacheUnstorageKv;
+    const clean = await fillCache(cache);
+    const request = generateRandomRequest();
+    b.start();
+    await cache.match(request);
+    b.end();
+    await clean();
+  },
+);
+*/
+
+Deno.bench(
+  "CachePersistenceUnstorageRedis",
+  { group: "match(req)" },
+  async (b) => {
+    const cache = cacheUnstorageRedis;
+    const clean = await fillCache(cache);
+    const request = generateRandomRequest();
+    b.start();
+    await cache.match(request);
+    b.end();
+    await clean();
+  },
+);
+
+Deno.bench(
+  "CachePersistenceUnstorageFs",
+  { group: "match(req)" },
+  async (b) => {
+    const cache = cacheUnstorageFs;
+    const clean = await fillCache(cache);
+    const request = generateRandomRequest();
+    b.start();
+    await cache.match(request);
+    b.end();
+    await clean();
+  },
+);
 
 // ---------------------------------
 
@@ -249,9 +433,79 @@ Deno.bench("CachePersistenceKv", { group: "matchAll(req)" }, async (b) => {
   await clean();
 });
 
-// ---------------------------------
+Deno.bench(
+  "CachePersistenceUnstorageMemory",
+  { group: "matchAll(req)" },
+  async (b) => {
+    const cache = cacheUnstorageMem;
+    const clean = await fillCache(cache);
+    const request = generateRandomRequest();
+    b.start();
+    await cache.matchAll(request);
+    b.end();
+    await clean();
+  },
+);
 
-// Deno.bench(
+// unstorage deno-kv driver does not support TTL.
+/*
+Deno.bench(
+  "CachePersistenceUnstorageDenoKv",
+  { group: "matchAll(req)" },
+  async (b) => {
+    const cache = cacheUnstorageKv;
+    const clean = await fillCache(cache);
+    const request = generateRandomRequest();
+    b.start();
+    await cache.matchAll(request);
+    b.end();
+    await clean();
+  },
+);
+*/
+
+Deno.bench(
+  "CachePersistenceUnstorageRedis",
+  { group: "matchAll(req)" },
+  async (b) => {
+    const cache = cacheUnstorageRedis;
+    const clean = await fillCache(cache);
+    const request = generateRandomRequest();
+    b.start();
+    await cache.matchAll(request);
+    b.end();
+    await clean();
+  },
+);
+
+Deno.bench(
+  "CachePersistenceUnstorageFs",
+  { group: "matchAll(req)" },
+  async (b) => {
+    const cache = cacheUnstorageFs;
+    const clean = await fillCache(cache);
+    const request = generateRandomRequest();
+    b.start();
+    await cache.matchAll(request);
+    b.end();
+    await clean();
+  },
+);
+
+Deno.bench(
+  "CachePersistenceUnstorageFs",
+  { group: "matchAll()" },
+  async (b) => {
+    const cache = cacheUnstorageFs;
+    const clean = await fillCache(cache);
+    b.start();
+    await cache.matchAll();
+    b.end();
+    await clean();
+  },
+);
+
+// ---------------------------------
 //     'CachePersistenceNative',
 //     { group: 'matchAll()' },
 //     async (b) => {
@@ -294,6 +548,48 @@ Deno.bench("CachePersistenceKv", { group: "matchAll()" }, async (b) => {
   b.end();
   await clean();
 });
+
+Deno.bench(
+  "CachePersistenceUnstorageMemory",
+  { group: "matchAll()" },
+  async (b) => {
+    const cache = cacheUnstorageMem;
+    const clean = await fillCache(cache);
+    b.start();
+    await cache.matchAll();
+    b.end();
+    await clean();
+  },
+);
+
+// unstorage deno-kv driver does not support TTL.
+/*
+Deno.bench(
+  "CachePersistenceUnstorageDenoKv",
+  { group: "matchAll()" },
+  async (b) => {
+    const cache = cacheUnstorageKv;
+    const clean = await fillCache(cache);
+    b.start();
+    await cache.matchAll();
+    b.end();
+    await clean();
+  },
+);
+*/
+
+Deno.bench(
+  "CachePersistenceUnstorageRedis",
+  { group: "matchAll()" },
+  async (b) => {
+    const cache = cacheUnstorageRedis;
+    const clean = await fillCache(cache);
+    b.start();
+    await cache.matchAll();
+    b.end();
+    await clean();
+  },
+);
 
 // ---------------------------------
 
@@ -361,6 +657,81 @@ Deno.bench("CachePersistenceKv", { group: "delete(req)" }, async (b) => {
   await clean();
 });
 
+Deno.bench(
+  "CachePersistenceUnstorageMemory",
+  { group: "delete(req)" },
+  async (b) => {
+    const cache = cacheUnstorageMem;
+    const clean = await fillCache(cache);
+    const request = generateRandomRequest();
+    b.start();
+    await cache.delete(request, {
+      ignoreMethod: true,
+      ignoreSearch: true,
+      ignoreVary: true,
+    });
+    b.end();
+    await clean();
+  },
+);
+
+// unstorage deno-kv driver does not support TTL.
+/*
+Deno.bench(
+  "CachePersistenceUnstorageDenoKv",
+  { group: "delete(req)" },
+  async (b) => {
+    const cache = cacheUnstorageKv;
+    const clean = await fillCache(cache);
+    const request = generateRandomRequest();
+    b.start();
+    await cache.delete(request, {
+      ignoreMethod: true,
+      ignoreSearch: true,
+      ignoreVary: true,
+    });
+    b.end();
+    await clean();
+  },
+);
+*/
+
+Deno.bench(
+  "CachePersistenceUnstorageRedis",
+  { group: "delete(req)" },
+  async (b) => {
+    const cache = cacheUnstorageRedis;
+    const clean = await fillCache(cache);
+    const request = generateRandomRequest();
+    b.start();
+    await cache.delete(request, {
+      ignoreMethod: true,
+      ignoreSearch: true,
+      ignoreVary: true,
+    });
+    b.end();
+    await clean();
+  },
+);
+
+Deno.bench(
+  "CachePersistenceUnstorageFs",
+  { group: "delete(req)" },
+  async (b) => {
+    const cache = cacheUnstorageFs;
+    const clean = await fillCache(cache);
+    const request = generateRandomRequest();
+    b.start();
+    await cache.delete(request, {
+      ignoreMethod: true,
+      ignoreSearch: true,
+      ignoreVary: true,
+    });
+    b.end();
+    await clean();
+  },
+);
+
 // ---------------------------------
 
 Deno.bench(
@@ -389,3 +760,40 @@ Deno.bench("CachePersistenceDenoRedis", { group: "delete()" }, async (b) => {
 Deno.bench("CachePersistenceKv", { group: "delete()" }, async (_b) => {
   await cachesKv.delete("default");
 });
+
+Deno.bench(
+  "CachePersistenceUnstorageMemory",
+  { group: "delete()" },
+  async (_b) => {
+    await cachesUnstorageMem.delete("default");
+  },
+);
+
+// unstorage deno-kv driver does not support TTL.
+/*
+Deno.bench(
+  "CachePersistenceUnstorageDenoKv",
+  { group: "delete()" },
+  async (_b) => {
+    await cachesUnstorageKv.delete("default");
+  },
+);
+*/
+
+Deno.bench(
+  "CachePersistenceUnstorageRedis",
+  { group: "delete()" },
+  async (b) => {
+    b.start();
+    await cachesUnstorageRedis.delete("default");
+    b.end();
+  },
+);
+
+Deno.bench(
+  "CachePersistenceUnstorageFs",
+  { group: "delete()" },
+  async (_b) => {
+    await cachesUnstorageFs.delete("default");
+  },
+);

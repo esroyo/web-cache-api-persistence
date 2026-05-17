@@ -2,6 +2,7 @@ import { assert, assertEquals } from "@std/assert";
 import { delay } from "@std/async/delay";
 import { CachePersistenceDenoKv } from "./mod.ts";
 import { CacheStorage } from "../core/cache_storage.ts";
+import { runSharedTests } from "../_shared/cache_storage_test.ts";
 import type {
   CacheLike,
   CachePersistenceDenoKvOptions,
@@ -232,13 +233,12 @@ Deno.test("denoKv factory", async (t) => {
   });
 });
 
-Object.defineProperty(globalThis, "caches", {
-  value: new CacheStorage(
+runSharedTests(
+  "deno-kv",
+  new CacheStorage(
     {
       create: async () => new CachePersistenceDenoKv({ max: 1, min: 1 }),
     },
     (name, value) => (name === "user-agent" ? "firefox" : value),
   ),
-});
-
-await import("../_shared/cache_storage_test.ts");
+);

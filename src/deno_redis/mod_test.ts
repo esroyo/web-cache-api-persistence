@@ -2,6 +2,7 @@ import { assert, assertEquals } from "@std/assert";
 import { delay } from "@std/async/delay";
 import { CachePersistenceDenoRedis } from "./mod.ts";
 import { CacheStorage } from "../core/cache_storage.ts";
+import { runSharedTests } from "../_shared/cache_storage_test.ts";
 import { nextPort, startRedis } from "../core/test_utils.ts";
 import type {
   CacheLike,
@@ -241,8 +242,9 @@ Deno.test("denoRedis factory", async (t) => {
   );
 });
 
-Object.defineProperty(globalThis, "caches", {
-  value: new CacheStorage(
+runSharedTests(
+  "deno-redis",
+  new CacheStorage(
     {
       create: async () =>
         new CachePersistenceDenoRedis({
@@ -254,8 +256,6 @@ Object.defineProperty(globalThis, "caches", {
     },
     (name, value) => (name === "user-agent" ? "firefox" : value),
   ),
-});
-
-await import("../_shared/cache_storage_test.ts");
+);
 
 // stopRedis(server);

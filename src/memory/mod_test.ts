@@ -2,6 +2,7 @@ import { assert, assertEquals } from "@std/assert";
 import { FakeTime } from "@std/testing/time";
 import { CachePersistenceMemory } from "./mod.ts";
 import { CacheStorage } from "../core/cache_storage.ts";
+import { runSharedTests } from "../_shared/cache_storage_test.ts";
 import type {
   CacheLike,
   CachePersistenceMemoryOptions,
@@ -310,11 +311,10 @@ Deno.test("memory factory", async (t) => {
   });
 });
 
-Object.defineProperty(globalThis, "caches", {
-  value: new CacheStorage(
+runSharedTests(
+  "memory",
+  new CacheStorage(
     undefined,
     (name, value) => (name === "user-agent" ? "firefox" : value),
   ),
-});
-
-await import("../_shared/cache_storage_test.ts");
+);
