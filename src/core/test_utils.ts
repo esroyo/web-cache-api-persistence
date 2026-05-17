@@ -80,9 +80,11 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-let currentPort = 7000;
 export function nextPort(): number {
-  return currentPort++;
+  // Random ephemeral port to avoid collisions under --parallel, where each
+  // V8 isolate gets its own module scope and the old sequential counter
+  // would always return the same starting value.
+  return 1024 + Math.floor(Math.random() * (65_535 - 1024));
 }
 
 async function waitForPort(port: number): Promise<void> {

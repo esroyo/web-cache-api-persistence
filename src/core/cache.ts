@@ -70,17 +70,22 @@ export class Cache implements CacheLike {
 
     this._enqueueBatchOperation({
       execute: async () => {
-        const cachedResponse = await this.match(request);
-        if (cachedResponse) {
-          await this._persistence.delete(
-            this._cacheName,
-            request,
-            cachedResponse,
-          );
-        }
+        try {
+          const cachedResponse = await this.match(request);
+          if (cachedResponse) {
+            await this._persistence.delete(
+              this._cacheName,
+              request,
+              cachedResponse,
+            );
+          }
 
-        await this._persistence.put(this._cacheName, request, response);
-        operation.resolve(undefined);
+          await this._persistence.put(this._cacheName, request, response);
+          operation.resolve(undefined);
+        } catch (e) {
+          operation.reject(e);
+          throw e;
+        }
       },
     });
 
@@ -112,34 +117,39 @@ export class Cache implements CacheLike {
 
     this._enqueueBatchOperation({
       execute: async () => {
-        let hasDeleted = false;
-        for await (
-          const [cachedRequest, cachedResponse] of this._persistence
-            .get(
-              this._cacheName,
-              request,
-            )
-        ) {
-          if (
-            this._requestMatchesCachedItem(
-              request,
-              cachedRequest,
-              cachedResponse,
-              options,
-            )
-          ) {
-            if (
-              await this._persistence.delete(
+        try {
+          let hasDeleted = false;
+          for await (
+            const [cachedRequest, cachedResponse] of this._persistence
+              .get(
                 this._cacheName,
                 request,
+              )
+          ) {
+            if (
+              this._requestMatchesCachedItem(
+                request,
+                cachedRequest,
                 cachedResponse,
+                options,
               )
             ) {
-              hasDeleted = true;
+              if (
+                await this._persistence.delete(
+                  this._cacheName,
+                  request,
+                  cachedResponse,
+                )
+              ) {
+                hasDeleted = true;
+              }
             }
           }
+          operation.resolve(hasDeleted);
+        } catch (e) {
+          operation.reject(e);
+          throw e;
         }
-        operation.resolve(hasDeleted);
       },
     });
 
