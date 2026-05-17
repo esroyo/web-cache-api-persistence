@@ -15,9 +15,14 @@ const now = () => (Math.floor(Date.now() / 1000) * 1000);
 export function runSharedTests(
   label: string,
   caches: CacheStorageLike,
+  options?: { staleRetention?: "evict" | "retain" },
 ): void {
-  // Tests that should be ignored when the CacheStorage instance is not our ponyfill
-  const ignore = caches instanceof CacheStorage === false;
+  const isNative = caches instanceof CacheStorage === false;
+  const retentionMode = options?.staleRetention ?? "evict";
+
+  const ignoreNative = isNative;
+  const ignoreEviction = isNative || retentionMode !== "evict";
+  const ignoreRetain = isNative || retentionMode !== "retain";
 
   Deno.test(`${label} > CacheStorage`, async (t) => {
     await t.step("open()", async (t) => {
@@ -63,7 +68,7 @@ export function runSharedTests(
       await t.step({
         name:
           "should resolve to true for caches with entries even when the have not been opened by the current CacheStorage instance",
-        ignore, // Not worth testing in Deno
+        ignore: ignoreNative,
         fn: async () => {
           // Lets simulate that other pairs exist in the persistence layer bypassing CacheStorage
           // @ts-ignore
@@ -105,7 +110,7 @@ export function runSharedTests(
 
       await t.step({
         name: "should remove all stored reponses",
-        ignore, // TODO: why does this not work in Deno?
+        ignore: ignoreNative,
         fn: async () => {
           {
             const anotherInstance = await caches.open("v1");
@@ -133,7 +138,7 @@ export function runSharedTests(
 
     await t.step({
       name: "keys()",
-      ignore, // Not implemented in Deno
+      ignore: ignoreNative, // Not implemented in Deno
       fn: async (t) => {
         await t.step(
           "should resolve to a list of cache names that includes opened caches",
@@ -182,7 +187,7 @@ export function runSharedTests(
 
     await t.step({
       name: "match()",
-      ignore, // Not implemented in Deno
+      ignore: ignoreNative, // Not implemented in Deno
       fn: async (t) => {
         await t.step(
           "should return undefined if none of the caches matches",
@@ -495,7 +500,7 @@ export function runSharedTests(
       await t.step({
         name:
           "should expire the entry according to Cache-Control s-maxage response header (with priority over max-age)",
-        ignore, // This is an adapter level decision
+        ignore: ignoreEviction, // Eviction: adapter-level decision
         fn: async () => {
           const cache = await caches.open(cacheName);
           const request = new Request("http://localhost/hello");
@@ -525,9 +530,39 @@ export function runSharedTests(
       });
 
       await t.step({
+        name: "should retain the expired entry with stale marker (s-maxage)",
+        ignore: ignoreRetain,
+        fn: async () => {
+          const cache = await caches.open(cacheName);
+          const request = new Request("http://localhost/hello");
+          const TTL = 1;
+          const response = new Response("Hello, world!", {
+            headers: {
+              "date": new Date(now()).toUTCString(),
+              "cache-control": `public, s-maxage=${TTL}, max-age=10000`,
+            },
+          });
+          await cache.put(request, response.clone());
+          assert(
+            await cache.match(request),
+            "Failed asserting existence before expiration",
+          );
+          await new Promise((res) => {
+            setTimeout(res, TTL * 1000 + 10);
+          });
+          const stale = await cache.match(request);
+          assert(stale !== undefined, "Expected stale response under retain");
+          assertEquals(stale.headers.get("x-cachestorage-stale"), "1");
+          assertEquals(await stale.text(), "Hello, world!");
+          await caches.delete(cacheName);
+          await cache[Symbol.asyncDispose]?.();
+        },
+      });
+
+      await t.step({
         name:
           "should expire the entry according to Cache-Control max-age response header (with priority over Expires)",
-        ignore, // This is an adapter level decision
+        ignore: ignoreEviction, // Eviction: adapter-level decision
         fn: async () => {
           const cache = await caches.open(cacheName);
           const request = new Request("http://localhost/hello");
@@ -558,8 +593,40 @@ export function runSharedTests(
       });
 
       await t.step({
+        name: "should retain the expired entry with stale marker (max-age)",
+        ignore: ignoreRetain,
+        fn: async () => {
+          const cache = await caches.open(cacheName);
+          const request = new Request("http://localhost/hello");
+          const TTL = 1;
+          const response = new Response("Hello, world!", {
+            headers: {
+              "date": new Date(now()).toUTCString(),
+              "cache-control": `public, max-age=${TTL}`,
+              "expires": new Date(now() + TTL * 100000)
+                .toUTCString(),
+            },
+          });
+          await cache.put(request, response.clone());
+          assert(
+            await cache.match(request),
+            "Failed asserting existence before expiration",
+          );
+          await new Promise((res) => {
+            setTimeout(res, TTL * 1000 + 10);
+          });
+          const stale = await cache.match(request);
+          assert(stale !== undefined, "Expected stale response under retain");
+          assertEquals(stale.headers.get("x-cachestorage-stale"), "1");
+          assertEquals(await stale.text(), "Hello, world!");
+          await caches.delete(cacheName);
+          await cache[Symbol.asyncDispose]?.();
+        },
+      });
+
+      await t.step({
         name: "should expire the entry according to Expires response header",
-        ignore, // This is an adapter level decision
+        ignore: ignoreEviction, // Eviction: adapter-level decision
         fn: async () => {
           const cache = await caches.open(cacheName);
           const request = new Request("http://localhost/hello");
@@ -582,9 +649,36 @@ export function runSharedTests(
       });
 
       await t.step({
+        name: "should retain the expired entry with stale marker (Expires)",
+        ignore: ignoreRetain,
+        fn: async () => {
+          const cache = await caches.open(cacheName);
+          const request = new Request("http://localhost/hello");
+          const TTL = 1;
+          const response = new Response("Hello, world!", {
+            headers: {
+              "expires": new Date(now() + TTL * 1000)
+                .toUTCString(),
+            },
+          });
+          await cache.put(request, response.clone());
+          assert(await cache.match(request));
+          await new Promise((res) => {
+            setTimeout(res, TTL * 1000 + 10);
+          });
+          const stale = await cache.match(request);
+          assert(stale !== undefined, "Expected stale response under retain");
+          assertEquals(stale.headers.get("x-cachestorage-stale"), "1");
+          assertEquals(await stale.text(), "Hello, world!");
+          await caches.delete(cacheName);
+          await cache[Symbol.asyncDispose]?.();
+        },
+      });
+
+      await t.step({
         name:
           "should gracefully handle the absence of Date header (fallingback to now)",
-        ignore, // This is an adapter level decision
+        ignore: ignoreEviction, // Eviction: adapter-level decision
         fn: async () => {
           const cache = await caches.open(cacheName);
           const request = new Request("http://localhost/hello");
@@ -607,8 +701,35 @@ export function runSharedTests(
 
       await t.step({
         name:
+          "should retain the expired entry with stale marker (no Date header)",
+        ignore: ignoreRetain,
+        fn: async () => {
+          const cache = await caches.open(cacheName);
+          const request = new Request("http://localhost/hello");
+          const TTL = 1;
+          const response = new Response("Hello, world!", {
+            headers: {
+              "cache-control": `public, max-age=${TTL}`,
+            },
+          });
+          await cache.put(request, response.clone());
+          assert(await cache.match(request));
+          await new Promise((res) => {
+            setTimeout(res, TTL * 1000 + 10);
+          });
+          const stale = await cache.match(request);
+          assert(stale !== undefined, "Expected stale response under retain");
+          assertEquals(stale.headers.get("x-cachestorage-stale"), "1");
+          assertEquals(await stale.text(), "Hello, world!");
+          await caches.delete(cacheName);
+          await cache[Symbol.asyncDispose]?.();
+        },
+      });
+
+      await t.step({
+        name:
           "should expire the entry according to Cache-Control response header taking into account the upstream Age",
-        ignore, // This is an adapter level decision
+        ignore: ignoreEviction, // Eviction: adapter-level decision
         fn: async () => {
           const cache = await caches.open(cacheName);
           const request = new Request("http://localhost/hello");
@@ -632,8 +753,36 @@ export function runSharedTests(
 
       await t.step({
         name:
+          "should retain the expired entry with stale marker (upstream Age)",
+        ignore: ignoreRetain,
+        fn: async () => {
+          const cache = await caches.open(cacheName);
+          const request = new Request("http://localhost/hello");
+          const response = new Response("Hello, world!", {
+            headers: {
+              "date": new Date(now()).toUTCString(),
+              "age": "1",
+              "cache-control": "public, max-age=2",
+            },
+          });
+          await cache.put(request, response.clone());
+          assert(await cache.match(request));
+          await new Promise((res) => {
+            setTimeout(res, 1000 + 10);
+          });
+          const stale = await cache.match(request);
+          assert(stale !== undefined, "Expected stale response under retain");
+          assertEquals(stale.headers.get("x-cachestorage-stale"), "1");
+          assertEquals(await stale.text(), "Hello, world!");
+          await caches.delete(cacheName);
+          await cache[Symbol.asyncDispose]?.();
+        },
+      });
+
+      await t.step({
+        name:
           "should keep non-expiring responses that have replace on expiring response",
-        ignore, // This is an adapter level decision
+        ignore: ignoreNative, // Uses matchAll, not supported in native
         fn: async () => {
           const cache = await caches.open(cacheName);
           const request = new Request("http://localhost/hello");
@@ -665,7 +814,7 @@ export function runSharedTests(
 
       await t.step({
         name: "should not store if the response has already expired",
-        ignore, // This is an adapter level decision
+        ignore: ignoreEviction, // Eviction: adapter-level decision
         fn: async () => {
           const cache = await caches.open(cacheName);
           const request = new Request("http://localhost/hello");
@@ -678,6 +827,29 @@ export function runSharedTests(
           });
           await cache.put(request, response.clone());
           assertFalse(await cache.match(request));
+          await caches.delete(cacheName);
+          await cache[Symbol.asyncDispose]?.();
+        },
+      });
+
+      await t.step({
+        name: "should store an already-expired response with stale marker",
+        ignore: ignoreRetain,
+        fn: async () => {
+          const cache = await caches.open(cacheName);
+          const request = new Request("http://localhost/hello");
+          const response = new Response("Hello, world!", {
+            headers: {
+              "date": new Date(now()).toUTCString(),
+              "age": "1",
+              "cache-control": "public, max-age=1",
+            },
+          });
+          await cache.put(request, response.clone());
+          const cached = await cache.match(request);
+          assert(cached !== undefined, "Expected stale response under retain");
+          assertEquals(cached.headers.get("x-cachestorage-stale"), "1");
+          assertEquals(await cached.text(), "Hello, world!");
           await caches.delete(cacheName);
           await cache[Symbol.asyncDispose]?.();
         },
@@ -733,7 +905,7 @@ export function runSharedTests(
 
     await t.step({
       name: "matchAll()",
-      ignore, // Not implemented in Deno
+      ignore: ignoreNative, // Not implemented in Deno
       fn: async (t) => {
         await t.step(
           "should retrieve when the first argument is a Request instance",
@@ -792,9 +964,10 @@ export function runSharedTests(
           },
         );
 
-        await t.step(
-          "should not retrieve if the response has expired",
-          async () => {
+        await t.step({
+          name: "should not retrieve if the response has expired",
+          ignore: ignoreEviction,
+          fn: async () => {
             const cache = await caches.open(cacheName);
             const request = new Request("http://localhost/hello");
             const TTL = 1;
@@ -812,7 +985,34 @@ export function runSharedTests(
             await caches.delete(cacheName);
             await cache[Symbol.asyncDispose]?.();
           },
-        );
+        });
+
+        await t.step({
+          name:
+            "should still retrieve the expired response with stale marker in retain mode",
+          ignore: ignoreRetain,
+          fn: async () => {
+            const cache = await caches.open(cacheName);
+            const request = new Request("http://localhost/hello");
+            const TTL = 1;
+            const response = new Response("Hello, world!", {
+              headers: {
+                "expires": new Date(now() + TTL * 1000)
+                  .toUTCString(),
+              },
+            });
+            await cache.put(request, response.clone());
+            await new Promise((res) => {
+              setTimeout(res, TTL * 1000 + 10);
+            });
+            const stale = await cache.match(request);
+            assert(stale !== undefined, "Expected stale response under retain");
+            assertEquals(await stale.text(), "Hello, world!");
+            assertEquals(stale.headers.get("x-cachestorage-stale"), "1");
+            await caches.delete(cacheName);
+            await cache[Symbol.asyncDispose]?.();
+          },
+        });
 
         await t.step(
           "should add the Age header to the response",
@@ -1178,7 +1378,7 @@ export function runSharedTests(
       await t.step({
         name:
           "should delete if the request method is other than GET with options.ignoreMethod",
-        ignore, // Not implemented in Deno
+        ignore: ignoreNative, // Not implemented in Deno
         fn: async () => {
           const cache = await caches.open(cacheName);
           {
@@ -1218,7 +1418,7 @@ export function runSharedTests(
       await t.step({
         name:
           "should delete if the request search does not match with option.ignoreSearch",
-        ignore, // Not implemented in Deno
+        ignore: ignoreNative, // Not implemented in Deno
         fn: async () => {
           const cache = await caches.open(cacheName);
           {
@@ -1237,7 +1437,7 @@ export function runSharedTests(
 
       await t.step({
         name: "should not delete if the request Vary values don't match",
-        ignore, // Not implemented in Deno
+        ignore: ignoreNative, // Not implemented in Deno
         fn: async () => {
           const cache = await caches.open(cacheName);
           {
@@ -1264,7 +1464,7 @@ export function runSharedTests(
       await t.step({
         name:
           "should delete if the request Vary values don't match, but normalize to the same value",
-        ignore, // Not implemented in Deno
+        ignore: ignoreNative, // Not implemented in Deno
         fn: async () => {
           const cache = await caches.open(cacheName);
           {
@@ -1291,7 +1491,7 @@ export function runSharedTests(
       await t.step({
         name:
           "should delete if the request Vary values don't match and options.ignoreVary",
-        ignore, // Not implemented in Deno
+        ignore: ignoreNative, // Not implemented in Deno
         fn: async () => {
           const cache = await caches.open(cacheName);
           {
@@ -1317,7 +1517,7 @@ export function runSharedTests(
 
       await t.step({
         name: "should keep non-matching cached responses",
-        ignore, // Not implemented in Deno
+        ignore: ignoreNative, // Not implemented in Deno
         fn: async () => {
           const cache = await caches.open(cacheName);
           {
@@ -1349,7 +1549,7 @@ export function runSharedTests(
 
     await t.step({
       name: "add()",
-      ignore, // Not implemented in Deno
+      ignore: ignoreNative, // Not implemented in Deno
       fn: async (t) => {
         await t.step(
           "should fetch the url and add the resulting response object to the cache",
@@ -1385,7 +1585,7 @@ export function runSharedTests(
 
     await t.step({
       name: "addAll()",
-      ignore, // Not implemented in Deno
+      ignore: ignoreNative, // Not implemented in Deno
       fn: async (t) => {
         await t.step(
           "should fetch all the urls and add the resulting response objects to the cache",
@@ -1440,7 +1640,7 @@ export function runSharedTests(
 
     await t.step({
       name: "keys()",
-      ignore, // Not implemented in Deno
+      ignore: ignoreNative, // Not implemented in Deno
       fn: async (t) => {
         await t.step(
           "should return the cached request object",
@@ -1506,7 +1706,7 @@ export function runSharedTests(
 
     await t.step({
       name: "should flush pending batched operations when disposed",
-      ignore, // Not possible to control this in native implementations
+      ignore: ignoreNative, // Not possible to control this in native implementations
       fn: async (t) => {
         const requestOne = new Request("http://localhost/hello");
         const responseOne = new Response("Hello, world! #1", {

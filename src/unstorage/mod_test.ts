@@ -1,5 +1,4 @@
 import { assert, assertEquals, assertRejects } from "@std/assert";
-import { FakeTime } from "@std/testing/time";
 import { createStorage as createUnstorage } from "unstorage";
 import fsLiteDriver from "unstorage/drivers/fs-lite";
 import redisDriver from "unstorage/drivers/redis";
@@ -46,18 +45,6 @@ async function createCache(
   return cache;
 }
 
-function createFreshResponse(
-  body: string,
-  init?: { cacheControl?: string; extraHeaders?: Record<string, string> },
-): Response {
-  const headers: Record<string, string> = {
-    date: new Date(Date.now()).toUTCString(),
-    ...(init?.cacheControl ? { "cache-control": init.cacheControl } : {}),
-    ...(init?.extraHeaders ?? {}),
-  };
-  return new Response(body, { headers });
-}
-
 import unstorageDefault, { unstorage } from "./mod.ts";
 
 // Redis setup for multi-backend shared conformance tests
@@ -69,7 +56,7 @@ const _normalizer = (name: string, value: string | null) =>
 
 const _memoryStorage = createUnstorage();
 runSharedTests(
-  "unstorage:memory",
+  "unstorage:memory:evict",
   new CacheStorage(
     {
       create: () =>
@@ -79,6 +66,24 @@ runSharedTests(
     },
     _normalizer,
   ),
+  { staleRetention: "evict" },
+);
+
+runSharedTests(
+  "unstorage:memory:retain",
+  new CacheStorage(
+    {
+      create: () =>
+        Promise.resolve(
+          new CachePersistenceUnstorage({
+            storage: _memoryStorage,
+            staleRetention: "retain",
+          }),
+        ),
+    },
+    _normalizer,
+  ),
+  { staleRetention: "retain" },
 );
 
 // unstorage deno-kv driver does not support TTL (the `ttl` option is silently
@@ -98,7 +103,7 @@ const _redisStorage = createUnstorage({
 await _redisStorage.setItem("__probe__", "1");
 await _redisStorage.removeItem("__probe__");
 runSharedTests(
-  "unstorage:redis",
+  "unstorage:redis:evict",
   new CacheStorage(
     {
       create: () =>
@@ -108,6 +113,27 @@ runSharedTests(
     },
     _normalizer,
   ),
+  { staleRetention: "evict" },
+);
+
+runSharedTests(
+  "unstorage:redis:retain",
+  new CacheStorage(
+    (() => {
+      let persistence;
+      return {
+        async create() {
+          persistence ??= new CachePersistenceUnstorage({
+            storage: _redisStorage,
+            staleRetention: "retain",
+          });
+          return persistence;
+        },
+      };
+    })(),
+    _normalizer,
+  ),
+  { staleRetention: "retain" },
 );
 addEventListener("unload", () => {
   _redisStorage.dispose?.();
@@ -123,7 +149,7 @@ const _fsStorage = createUnstorage({
   driver: fsLiteDriver({ base: "tmp/test-fs" }),
 });
 runSharedTests(
-  "unstorage:fs-lite",
+  "unstorage:fs-lite:evict",
   new CacheStorage(
     {
       create: () =>
@@ -133,6 +159,27 @@ runSharedTests(
     },
     _normalizer,
   ),
+  { staleRetention: "evict" },
+);
+
+runSharedTests(
+  "unstorage:fs-lite:retain",
+  new CacheStorage(
+    (() => {
+      let persistence;
+      return {
+        async create() {
+          persistence ??= new CachePersistenceUnstorage({
+            storage: _fsStorage,
+            staleRetention: "retain",
+          });
+          return persistence;
+        },
+      };
+    })(),
+    _normalizer,
+  ),
+  { staleRetention: "retain" },
 );
 
 Deno.test("unstorage factory", async (t) => {
@@ -175,263 +222,24 @@ Deno.test("unstorage factory", async (t) => {
   });
 });
 
-Deno.test("Unstorage — staleRetention=evict (default)", async (t) => {
-  await t.step(
-    "an entry past its HTTP expiration is no longer matched",
-    async () => {
-      using time = new FakeTime();
-      await using cache = await createCache();
-      const req = new Request("http://localhost/x");
-      await cache.put(
-        req,
-        createFreshResponse("hello", { cacheControl: "max-age=1" }),
-      );
+Deno.test("Unstorage — error propagation", async () => {
+  const throwingStorage = createUnstorage();
+  const originalSet = throwingStorage.setItemRaw.bind(throwingStorage);
+  throwingStorage.setItemRaw = () => Promise.reject(new Error("storage error"));
 
-      const fresh = await cache.match(req);
-      assert(fresh !== undefined, "expected fresh match");
-      assertEquals(await fresh.text(), "hello");
-      assertEquals(fresh.headers.get("x-cachestorage-stale"), null);
-
-      await time.tickAsync(2_000);
-      assertEquals(await cache.match(req), undefined);
-    },
-  );
-
-  await t.step(
-    "a response without explicit freshness is not stored",
-    async () => {
-      await using cache = await createCache();
-      const req = new Request("http://localhost/x");
-      await cache.put(req, new Response("hi"));
-      assertEquals(await cache.match(req), undefined);
-      assertEquals((await cache.matchAll(req)).length, 0);
-    },
-  );
-});
-
-Deno.test("Unstorage — staleRetention=retain", async (t) => {
-  await t.step(
-    "an entry past HTTP expiration is still matched, with stale marker",
-    async () => {
-      using time = new FakeTime();
-      await using cache = await createCache({
-        staleRetention: "retain",
-        maxPersistenceTtlMs: 60_000,
-      });
-      const req = new Request("http://localhost/x");
-      await cache.put(
-        req,
-        createFreshResponse("hello", { cacheControl: "max-age=1" }),
-      );
-
-      const fresh = await cache.match(req);
-      assert(fresh !== undefined, "expected fresh match");
-      assertEquals(fresh.headers.get("x-cachestorage-stale"), null);
-
-      await time.tickAsync(2_000);
-      const stale = await cache.match(req);
-      assert(stale !== undefined, "expected stale match under retain");
-      assertEquals(await stale.text(), "hello");
-      assertEquals(stale.headers.get("x-cachestorage-stale"), "1");
-    },
-  );
-
-  await t.step(
-    "a header-less response is stored, and stale on first read",
-    async () => {
-      await using cache = await createCache({
-        staleRetention: "retain",
-        maxPersistenceTtlMs: 60_000,
-      });
-      const req = new Request("http://localhost/x");
-      await cache.put(req, new Response("hi"));
-
-      const matched = await cache.match(req);
-      assert(matched !== undefined, "expected match under retain");
-      assertEquals(await matched.text(), "hi");
-      assertEquals(matched.headers.get("x-cachestorage-stale"), "1");
-    },
-  );
-});
-
-Deno.test("Unstorage — CRUD", async (t) => {
-  await t.step(
-    "put then match returns the stored response body, status, and headers",
-    async () => {
-      await using cache = await createCache();
-      const req = new Request("http://example.com/a");
-      const res = new Response("hello", {
-        status: 200,
-        headers: {
-          "content-type": "text/plain",
-          "cache-control": "max-age=3600",
-        },
-      });
-      await cache.put(req, res);
-
-      const matched = await cache.match(req);
-      assert(matched !== undefined);
-      assertEquals(await matched.text(), "hello");
-      assertEquals(matched.status, 200);
-      assertEquals(matched.headers.get("content-type"), "text/plain");
-    },
-  );
-
-  await t.step(
-    "put twice for same request URL replaces the entry",
-    async () => {
-      await using cache = await createCache();
-      const req = new Request("http://example.com/a");
-      await cache.put(
-        req,
-        new Response("A", {
-          headers: { "cache-control": "max-age=3600" },
-        }),
-      );
-      await cache.put(
-        req,
-        new Response("B", {
-          headers: { "cache-control": "max-age=3600" },
-        }),
-      );
-
-      const matches = await cache.matchAll(req);
-      assertEquals(matches.length, 1);
-      assertEquals(await matches[0].text(), "B");
-    },
-  );
-
-  await t.step("delete removes a stored entry", async () => {
-    await using cache = await createCache();
-    const req = new Request("http://example.com/a");
-    await cache.put(
-      req,
-      new Response("hello", {
-        headers: { "cache-control": "max-age=3600" },
-      }),
-    );
-    assert(await cache.delete(req));
-    assertEquals(await cache.match(req), undefined);
+  await using cache = await createCache({
+    storage: throwingStorage,
+  });
+  const req = new Request("http://example.com/err");
+  const res = new Response("oops", {
+    headers: { "cache-control": "max-age=3600" },
   });
 
-  await t.step("delete for non-existent key returns false", async () => {
-    await using cache = await createCache();
-    const req = new Request("http://example.com/never-put");
-    assertEquals(await cache.delete(req), false);
-  });
-
-  await t.step(
-    "entries from different caches are isolated",
-    async () => {
-      const storage = createUnstorage();
-      const storeA = createStorage({ storage });
-      const storeB = createStorage({ storage });
-      await using cacheA = await storeA.open("cacheA") as CacheLike;
-      await using cacheB = await storeB.open("cacheB") as CacheLike;
-
-      const req = new Request("http://example.com/a");
-      await cacheA.put(
-        req,
-        new Response("A-body", {
-          headers: { "cache-control": "max-age=3600" },
-        }),
-      );
-      await cacheB.put(
-        req,
-        new Response("B-body", {
-          headers: { "cache-control": "max-age=3600" },
-        }),
-      );
-
-      assertEquals(await (await cacheA.match(req))?.text(), "A-body");
-      assertEquals(await (await cacheB.match(req))?.text(), "B-body");
-    },
+  await assertRejects(
+    () => cache.put(req, res),
+    Error,
+    "storage error",
   );
 
-  await t.step(
-    "entries from different CacheStorage instances sharing the same unstorage backend are isolated",
-    async () => {
-      const storage = createUnstorage();
-      const storeA = new CacheStorage({
-        create: () =>
-          Promise.resolve(new CachePersistenceUnstorage({ storage })),
-      });
-      const storeB = new CacheStorage({
-        create: () =>
-          Promise.resolve(new CachePersistenceUnstorage({ storage })),
-      });
-
-      const req = new Request("http://example.com/a");
-      const cacheA = await storeA.open("shared-cache") as CacheLike;
-      const cacheB = await storeB.open("shared-cache") as CacheLike;
-
-      await cacheA.put(
-        req,
-        new Response("A-data", {
-          headers: { "cache-control": "max-age=3600" },
-        }),
-      );
-      await cacheB.put(
-        req,
-        new Response("B-data", {
-          headers: { "cache-control": "max-age=3600" },
-        }),
-      );
-
-      assertEquals(
-        await (await cacheA.match(req))?.text(),
-        "B-data",
-      );
-
-      await cacheA[Symbol.asyncDispose]?.();
-      await cacheB[Symbol.asyncDispose]?.();
-      await storeA.delete("shared-cache");
-      await storeB.delete("shared-cache");
-    },
-  );
-
-  await t.step(
-    "large response body (100 KB) round-trips byte-for-byte identical",
-    async () => {
-      await using cache = await createCache();
-      const req = new Request("http://example.com/large");
-      const largeBody = "x".repeat(100_000);
-      await cache.put(
-        req,
-        new Response(largeBody, {
-          headers: { "cache-control": "max-age=3600" },
-        }),
-      );
-
-      const matched = await cache.match(req);
-      assert(matched !== undefined);
-      assertEquals(await matched.text(), largeBody);
-    },
-  );
-
-  await t.step(
-    "error from unstorage storage on put propagates",
-    async () => {
-      const throwingStorage = createUnstorage();
-      const originalSet = throwingStorage.setItemRaw.bind(throwingStorage);
-      throwingStorage.setItemRaw = () =>
-        Promise.reject(new Error("storage error"));
-
-      await using cache = await createCache({
-        storage: throwingStorage,
-      });
-      const req = new Request("http://example.com/err");
-      const res = new Response("oops", {
-        headers: { "cache-control": "max-age=3600" },
-      });
-
-      await assertRejects(
-        () => cache.put(req, res),
-        Error,
-        "storage error",
-      );
-
-      throwingStorage.setItemRaw = originalSet;
-    },
-  );
+  throwingStorage.setItemRaw = originalSet;
 });

@@ -70,51 +70,11 @@ function createFreshResponse(
   return new Response(body, { headers });
 }
 
-Deno.test("Memory — staleRetention=evict (default)", async (t) => {
+Deno.test("Memory — maxPersistenceTtlMs", async (t) => {
   await t.step(
-    "an entry past its HTTP expiration is no longer matched",
+    "caps storage lifetime below HTTP expiration",
     async () => {
       using time = new FakeTime();
-      await using cache = await createCache();
-      const req = new Request("http://localhost/x");
-      await cache.put(
-        req,
-        createFreshResponse("hello", { cacheControl: "max-age=1" }),
-      );
-
-      // Fresh window: entry is matched, no stale marker.
-      const fresh = await cache.match(req);
-      assert(fresh !== undefined, "expected fresh match");
-      assertEquals(await fresh.text(), "hello");
-      assertEquals(fresh.headers.get("x-cachestorage-stale"), null);
-
-      // Past HTTP expiration under evict: gone.
-      await time.tickAsync(2_000);
-      assertEquals(await cache.match(req), undefined);
-    },
-  );
-
-  await t.step(
-    "a response without explicit freshness is not stored",
-    async () => {
-      await using cache = await createCache();
-      const req = new Request("http://localhost/x");
-      // No Cache-Control, no Expires — RFC 9111 §4.2.1: no explicit
-      // freshness lifetime. Under default `evict` this means "don't
-      // store"; the entry must not be observable.
-      await cache.put(req, new Response("hi"));
-      assertEquals(await cache.match(req), undefined);
-      assertEquals((await cache.matchAll(req)).length, 0);
-    },
-  );
-
-  await t.step(
-    "maxPersistenceTtlMs caps storage lifetime below HTTP expiration",
-    async () => {
-      using time = new FakeTime();
-      // HTTP says "fresh for 1 hour" but storage policy says "max 60s".
-      // The cap must win: the entry must be gone at t > 60s even
-      // though HTTP still considers it fresh.
       await using cache = await createCache({
         maxPersistenceTtlMs: 60_000,
       });
@@ -124,24 +84,20 @@ Deno.test("Memory — staleRetention=evict (default)", async (t) => {
         createFreshResponse("hello", { cacheControl: "max-age=3600" }),
       );
 
-      // Within the cap: still matched.
       await time.tickAsync(30_000);
       const mid = await cache.match(req);
       assert(mid !== undefined, "expected match before cap");
       assertEquals(await mid.text(), "hello");
 
-      // Past the cap: gone.
       await time.tickAsync(31_000);
       assertEquals(await cache.match(req), undefined);
     },
   );
 
   await t.step(
-    "maxPersistenceTtlMs does not extend HTTP expiration",
+    "does not extend HTTP expiration",
     async () => {
       using time = new FakeTime();
-      // HTTP says "fresh for 30s"; the cap is well above that. HTTP
-      // expiration should still win — entry gone at t > 30s.
       await using cache = await createCache({
         maxPersistenceTtlMs: 60_000,
       });
@@ -155,11 +111,9 @@ Deno.test("Memory — staleRetention=evict (default)", async (t) => {
       assertEquals(await cache.match(req), undefined);
     },
   );
-});
 
-Deno.test("Memory — staleRetention=retain", async (t) => {
   await t.step(
-    "an entry past HTTP expiration is still matched, with stale marker",
+    "bounds the lifetime of a stale entry (retain mode)",
     async () => {
       using time = new FakeTime();
       await using cache = await createCache({
@@ -172,59 +126,11 @@ Deno.test("Memory — staleRetention=retain", async (t) => {
         createFreshResponse("hello", { cacheControl: "max-age=1" }),
       );
 
-      // Fresh window: matched, NO stale marker.
-      const fresh = await cache.match(req);
-      assert(fresh !== undefined, "expected fresh match");
-      assertEquals(fresh.headers.get("x-cachestorage-stale"), null);
-
-      // Past HTTP expiration: still matched, marked stale.
-      await time.tickAsync(2_000);
-      const stale = await cache.match(req);
-      assert(stale !== undefined, "expected stale match under retain");
-      assertEquals(await stale.text(), "hello");
-      assertEquals(stale.headers.get("x-cachestorage-stale"), "1");
-    },
-  );
-
-  await t.step(
-    "a header-less response is stored, and stale on first read",
-    async () => {
-      await using cache = await createCache({
-        staleRetention: "retain",
-        maxPersistenceTtlMs: 60_000,
-      });
-      const req = new Request("http://localhost/x");
-      await cache.put(req, new Response("hi"));
-
-      const matched = await cache.match(req);
-      assert(matched !== undefined, "expected match under retain");
-      assertEquals(await matched.text(), "hi");
-      assertEquals(matched.headers.get("x-cachestorage-stale"), "1");
-    },
-  );
-
-  await t.step(
-    "maxPersistenceTtlMs bounds the lifetime of a stale entry",
-    async () => {
-      using time = new FakeTime();
-      await using cache = await createCache({
-        staleRetention: "retain",
-        maxPersistenceTtlMs: 60_000,
-      });
-      const req = new Request("http://localhost/x");
-      await cache.put(
-        req,
-        createFreshResponse("hello", { cacheControl: "max-age=1" }),
-      );
-
-      // Well past HTTP expiration, well within the cap: still served
-      // as stale.
       await time.tickAsync(30_000);
       const stale = await cache.match(req);
       assert(stale !== undefined, "expected stale match within cap");
       assertEquals(stale.headers.get("x-cachestorage-stale"), "1");
 
-      // Past the cap: gone (storage-policy ceiling).
       await time.tickAsync(31_000);
       assertEquals(await cache.match(req), undefined);
     },
@@ -245,8 +151,6 @@ Deno.test("Memory — staleRetention=retain", async (t) => {
         createFreshResponse("A", { cacheControl: "max-age=1" }),
       );
       await time.tickAsync(2_000);
-      // Predecessor is now stale (but still retained). New put should
-      // replace it, not pile up alongside.
       await cache.put(
         req,
         createFreshResponse("B", { cacheControl: "max-age=60" }),
@@ -255,7 +159,6 @@ Deno.test("Memory — staleRetention=retain", async (t) => {
       const matches = await cache.matchAll(req);
       assertEquals(matches.length, 1);
       assertEquals(await matches[0].text(), "B");
-      // The replacement is fresh.
       assertEquals(matches[0].headers.get("x-cachestorage-stale"), null);
     },
   );
@@ -311,10 +214,33 @@ Deno.test("memory factory", async (t) => {
   });
 });
 
+const _memorySharedNormalizer = (name: string, value: string | null) =>
+  name === "user-agent" ? "firefox" : value;
+
 runSharedTests(
-  "memory",
+  "memory:evict",
   new CacheStorage(
     undefined,
-    (name, value) => (name === "user-agent" ? "firefox" : value),
+    _memorySharedNormalizer,
   ),
+  { staleRetention: "evict" },
+);
+
+runSharedTests(
+  "memory:retain",
+  new CacheStorage(
+    (() => {
+      let persistence;
+      return {
+        async create() {
+          persistence ??= new CachePersistenceMemory({
+            staleRetention: "retain",
+          });
+          return persistence;
+        },
+      };
+    })(),
+    _memorySharedNormalizer,
+  ),
+  { staleRetention: "retain" },
 );
