@@ -75,6 +75,7 @@ const _kvSharedNormalizer = (name: string, value: string | null) =>
       create: async () =>
         new CachePersistenceDenoKv({
           ...opts,
+          path: "tmp/test-deno-kv-native",
           max: 1,
           min: 1,
         }),
@@ -92,6 +93,7 @@ const _kvSharedNormalizer = (name: string, value: string | null) =>
         create: async () =>
           new CachePersistenceDenoKv({
             ...opts,
+            path: "tmp/test-deno-kv-native",
             max: 1,
             min: 1,
           }),

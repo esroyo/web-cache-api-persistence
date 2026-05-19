@@ -31,8 +31,11 @@ export class CachePersistenceUnstorage extends CachePersistenceBase
 
   async keys(): Promise<string[]> {
     const cacheNames = new Set<string>();
-    for (const key of await this._dbScan("cachestorage:")) {
-      cacheNames.add(this._splitKey(key)[1]);
+    const prefix = this._joinKey(
+      (await this._persistenceKey("")).slice(0, -1),
+    );
+    for (const key of await this._dbScan(prefix)) {
+      cacheNames.add(decodeURIComponent(this._splitKey(key)[1]));
     }
     return [...cacheNames];
   }
@@ -127,11 +130,10 @@ export class CachePersistenceUnstorage extends CachePersistenceBase
     webidl.requiredArguments(arguments.length, 1, prefix);
     const instance = this;
     return (async function* () {
-      for (
-        const key of await instance._dbScan(
-          `cachestorage:${cacheName}:`,
-        )
-      ) {
+      const scanPrefix = instance._joinKey(
+        await instance._persistenceKey(cacheName),
+      ) + ":";
+      for (const key of await instance._dbScan(scanPrefix)) {
         const plainReqRes = await instance._dbGet(key);
         if (!plainReqRes) {
           continue;

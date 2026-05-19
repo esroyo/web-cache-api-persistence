@@ -99,6 +99,7 @@ const _normalizer = (name: string, value: string | null) =>
 }
 
 {
+  const kvPath = "tmp/test-unstorage-kv";
   const opts = { staleRetention: "evict" as const };
   runSharedTests(
     "unstorage:deno-kv:evict",
@@ -107,7 +108,7 @@ const _normalizer = (name: string, value: string | null) =>
         new CachePersistenceUnstorage({
           ...opts,
           storage: createUnstorage({
-            driver: denoKvDriver({}),
+            driver: denoKvDriver({ openKv: () => Deno.openKv(kvPath) }),
           }),
         }),
     }, _normalizer),
@@ -116,6 +117,7 @@ const _normalizer = (name: string, value: string | null) =>
 }
 
 {
+  const kvPath = "tmp/test-unstorage-kv";
   const opts = { staleRetention: "retain" as const };
   runSharedTests(
     "unstorage:deno-kv:retain",
@@ -124,7 +126,7 @@ const _normalizer = (name: string, value: string | null) =>
         new CachePersistenceUnstorage({
           ...opts,
           storage: createUnstorage({
-            driver: denoKvDriver({}),
+            driver: denoKvDriver({ openKv: () => Deno.openKv(kvPath) }),
           }),
         }),
     }, _normalizer),
