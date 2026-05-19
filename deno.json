@@ -19,7 +19,13 @@
   },
   "publish": {
     "exclude": [
-      "bench/"
+      "bench/",
+      ".github/",
+      "openspec/",
+      ".editorconfig",
+      ".versionrc.json",
+      "redis.conf",
+      "*_test.ts"
     ]
   },
   "imports": {
