@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.4.1](https://github.com/esroyo/web-cache-api-persistence/compare/v0.4.0...v0.4.1) (2026-05-19)
+
+
+### Features
+
+* add ignoreRetention option and fix unstorage backend issues ([75aaf3e](https://github.com/esroyo/web-cache-api-persistence/commit/75aaf3e4818363a8ea2169d0020422a828d8256e))
+* add unstorage backend and fix batch operation error propagation ([b2fc9dc](https://github.com/esroyo/web-cache-api-persistence/commit/b2fc9dcfce173ffc25b84a68fc8c64eb78cc8815))
+
+
+### Bug Fixes
+
+* encode cache names to prevent ':' delimiter conflicts ([f56492f](https://github.com/esroyo/web-cache-api-persistence/commit/f56492f7dc847ad654e1d9fb6c3e89dc20473e93))
+
 ## [0.4.0](https://github.com/esroyo/web-cache-api-persistence/compare/v0.3.1...v0.4.0) (2026-05-16)
 
 
