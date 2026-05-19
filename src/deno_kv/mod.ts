@@ -45,7 +45,7 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
     const cacheNames = new Set<string>();
     const persistenceKey = (await this._persistenceKey("")).slice(0, -1);
     for (const key of await this._dbScan(persistenceKey)) {
-      cacheNames.add(key[1]);
+      cacheNames.add(decodeURIComponent(key[1]));
     }
     return [...cacheNames];
   }

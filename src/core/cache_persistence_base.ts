@@ -81,7 +81,7 @@ export abstract class CachePersistenceBase {
     requestOrPlainReq?: Request | (PlainReq & PlainReqResMeta),
     responseOrPlainRes?: Response | (PlainRes & PlainReqResMeta),
   ): Promise<string[]> {
-    const keyParts = ["cachestorage", cacheName];
+    const keyParts = ["cachestorage", encodeURIComponent(cacheName)];
     if (requestOrPlainReq) {
       const isCachedRequest = !(requestOrPlainReq instanceof Request);
       const reqUrl = new URL(

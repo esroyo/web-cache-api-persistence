@@ -65,7 +65,7 @@ export class CachePersistenceDenoRedis extends CachePersistenceBase
     const cacheNames = new Set<string>();
     const persistenceKey = (await this._persistenceKey("*")).concat("*");
     for (const key of await this._dbScan(persistenceKey)) {
-      cacheNames.add(this._splitKey(key)[1]);
+      cacheNames.add(decodeURIComponent(this._splitKey(key)[1]));
     }
     return [...cacheNames];
   }
