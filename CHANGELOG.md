@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.4.2](https://github.com/esroyo/web-cache-api-persistence/compare/v0.4.1...v0.4.2) (2026-05-19)
+
+
+### Other
+
+* sync CachePersistenceLike interface docs in README and types ([ccc1795](https://github.com/esroyo/web-cache-api-persistence/commit/ccc1795e740ebf2d39c7aa8bb8a11815807aca55))
+
 ## [0.4.1](https://github.com/esroyo/web-cache-api-persistence/compare/v0.4.0...v0.4.1) (2026-05-19)
 
 
