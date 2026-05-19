@@ -56,8 +56,7 @@ The package ships five backends, each addressable through a flat sub-path:
   [unstorage](https://github.com/unjs/unstorage), a universal storage layer with
   20+ drivers (filesystem, S3, Cloudflare KV, Upstash Redis, Deno KV, etc.).
   Binary data is stored via `setItemRaw`/`getItemRaw` and **TTL is delegated to
-  native driver** (check per-driver support). The caller owns the unstorage `Storage`
-  instance lifecycle.
+  native driver** (check per-driver support).
 
 Each sub-path exports the same shape: a default factory (e.g. `denoRedis`), a
 same-identity named factory, the persistence class, and the options type. Pick
@@ -165,10 +164,14 @@ export interface CachePersistenceLike {
    * The get() method of the CachePersistence interface finds the entry whose key
    * is the request, and returns an async iterator that yields all the
    * Request/Response pairs associated to the key, one at a time.
+   *
+   * The optional `options.ignoreRetention` flag bypasses stale-entry filtering,
+   * causing expired entries to be yielded even under `"retain"` mode.
    */
   get(
     cacheName: string,
     request: Request,
+    options?: CachePersistenceQueryOptions,
   ): AsyncGenerator<readonly [Request, Response], void, unknown>;
 
   /**
@@ -176,8 +179,14 @@ export interface CachePersistenceLike {
    * an async iterator that yields all the existing Request/Response pairs.
    * The pairs are returned in the order that they were inserted, that is older
    * pairs are yielded first.
+   *
+   * The optional `options.ignoreRetention` flag bypasses stale-entry filtering,
+   * causing expired entries to be yielded even under `"retain"` mode.
    */
-  [Symbol.asyncIterator](cacheName: string): AsyncGenerator<
+  [Symbol.asyncIterator](
+    cacheName: string,
+    options?: CachePersistenceQueryOptions,
+  ): AsyncGenerator<
     readonly [Request, Response],
     void,
     unknown

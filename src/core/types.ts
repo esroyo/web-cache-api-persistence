@@ -57,6 +57,9 @@ export interface CachePersistenceLike {
    * The get() method of the CachePersistence interface finds the entry whose key
    * is the request, and returns an async iterator that yields all the
    * Request/Response pairs associated to the key, one at a time.
+   *
+   * @param options.ignoreRetention - If true, expired entries are yielded
+   *   even under `"retain"` mode (bypasses stale-entry filtering).
    */
   get(
     cacheName: string,
@@ -69,6 +72,9 @@ export interface CachePersistenceLike {
    * an async iterator that yields all the existing Request/Response pairs.
    * The pairs are returned in the order that they were inserted, that is older
    * pairs are yielded first.
+   *
+   * @param options.ignoreRetention - If true, expired entries are yielded
+   *   even under `"retain"` mode (bypasses stale-entry filtering).
    */
   [Symbol.asyncIterator](
     cacheName: string,
@@ -137,16 +143,20 @@ export interface CacheLike extends Cache {
 
   /**
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/delete)
+   *
+   * @param options.ignoreRetention - Bypass stale-entry filtering.
    */
   delete(
     request: RequestInfo | URL,
-    options?: CacheQueryOptions,
+    options?: CacheQueryOptions & CachePersistenceQueryOptions,
   ): Promise<boolean>;
 
   /**
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/keys)
    *
    * Note: this method is not implemented in Deno built-in Cache objects.
+   *
+   * @param options.ignoreRetention - Bypass stale-entry filtering.
    */
   keys(
     request?: RequestInfo | URL,
@@ -155,20 +165,24 @@ export interface CacheLike extends Cache {
 
   /**
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/match)
+   *
+   * @param options.ignoreRetention - Bypass stale-entry filtering.
    */
   match(
     request: RequestInfo | URL,
-    options?: CacheQueryOptions,
+    options?: CacheQueryOptions & CachePersistenceQueryOptions,
   ): Promise<Response | undefined>;
 
   /**
    * [MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/matchAll)
    *
    * Note: this method is not implemented in Deno built-in Cache objects.
+   *
+   * @param options.ignoreRetention - Bypass stale-entry filtering.
    */
   matchAll(
     request?: RequestInfo | URL,
-    options?: CacheQueryOptions,
+    options?: CacheQueryOptions & CachePersistenceQueryOptions,
   ): Promise<ReadonlyArray<Response>>;
 
   /**
