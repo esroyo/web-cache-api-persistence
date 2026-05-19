@@ -3,6 +3,7 @@ import type {
   CacheHeaderNormalizer,
   CacheLike,
   CachePersistenceLike,
+  CachePersistenceQueryOptions,
 } from "./types.ts";
 import * as webidl from "./webidl.ts";
 
@@ -71,7 +72,9 @@ export class Cache implements CacheLike {
     this._enqueueBatchOperation({
       execute: async () => {
         try {
-          const cachedResponse = await this.match(request);
+          const cachedResponse = await this.match(request, {
+            ignoreRetention: true,
+          });
           if (cachedResponse) {
             await this._persistence.delete(
               this._cacheName,
@@ -99,7 +102,7 @@ export class Cache implements CacheLike {
    */
   async delete(
     requestOrUrl: RequestInfo | URL,
-    options?: CacheQueryOptions,
+    options?: CacheQueryOptions & CachePersistenceQueryOptions,
   ): Promise<boolean> {
     const prefix = "Failed to execute 'delete' on 'Cache'";
     webidl.requiredArguments(arguments.length, 1, prefix);
@@ -124,6 +127,7 @@ export class Cache implements CacheLike {
               .get(
                 this._cacheName,
                 request,
+                options,
               )
           ) {
             if (
@@ -163,7 +167,7 @@ export class Cache implements CacheLike {
    */
   async match(
     request: RequestInfo | URL,
-    options?: CacheQueryOptions,
+    options?: CacheQueryOptions & CachePersistenceQueryOptions,
   ): Promise<Response | undefined> {
     const prefix = "Failed to execute 'match' on 'Cache'";
     webidl.requiredArguments(arguments.length, 1, prefix);
@@ -180,7 +184,7 @@ export class Cache implements CacheLike {
    */
   async matchAll(
     requestOrUrl?: RequestInfo | URL,
-    options?: CacheQueryOptions,
+    options?: CacheQueryOptions & CachePersistenceQueryOptions,
   ): Promise<ReadonlyArray<Response>> {
     return this._matchMax(
       Infinity,
@@ -209,7 +213,7 @@ export class Cache implements CacheLike {
   /**[MDN Reference](https://developer.mozilla.org/docs/Web/API/Cache/keys) */
   async keys(
     requestOrUrl?: RequestInfo | URL,
-    options?: CacheQueryOptions,
+    options?: CacheQueryOptions & CachePersistenceQueryOptions,
   ): Promise<ReadonlyArray<Request>> {
     return this._matchMax(
       Infinity,
@@ -223,19 +227,19 @@ export class Cache implements CacheLike {
     max: number,
     keys: false,
     requestOrUrl?: RequestInfo | URL,
-    options?: CacheQueryOptions,
+    options?: CacheQueryOptions & CachePersistenceQueryOptions,
   ): Promise<ReadonlyArray<Response>>;
   protected async _matchMax(
     max: number,
     keys: true,
     requestOrUrl?: RequestInfo | URL,
-    options?: CacheQueryOptions,
+    options?: CacheQueryOptions & CachePersistenceQueryOptions,
   ): Promise<ReadonlyArray<Request>>;
   protected async _matchMax(
     max: number,
     keys: boolean,
     requestOrUrl?: RequestInfo | URL,
-    options?: CacheQueryOptions,
+    options?: CacheQueryOptions & CachePersistenceQueryOptions,
   ): Promise<ReadonlyArray<Response | Request>> {
     let request: Request | null = null;
     if (requestOrUrl instanceof Request) {
@@ -251,7 +255,7 @@ export class Cache implements CacheLike {
     if (!request) {
       for await (
         const [cachedRequest, cachedResponse] of this._persistence
-          [Symbol.asyncIterator](this._cacheName)
+          [Symbol.asyncIterator](this._cacheName, options)
       ) {
         responsesOrRequests.push(keys ? cachedRequest : cachedResponse);
         if (responsesOrRequests.length >= max) {
@@ -265,6 +269,7 @@ export class Cache implements CacheLike {
       const [cachedRequest, cachedResponse] of this._persistence.get(
         this._cacheName,
         request,
+        options,
       )
     ) {
       if (
@@ -290,7 +295,7 @@ export class Cache implements CacheLike {
     requestQuery: Request,
     request: Request,
     response: Response | null = null,
-    options?: CacheQueryOptions,
+    options?: CacheQueryOptions & CachePersistenceQueryOptions,
   ): boolean {
     if (!options?.ignoreMethod && request.method !== "GET") {
       return false;

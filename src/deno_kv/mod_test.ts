@@ -67,29 +67,37 @@ Deno.test("denoKv factory", async (t) => {
 const _kvSharedNormalizer = (name: string, value: string | null) =>
   name === "user-agent" ? "firefox" : value;
 
-runSharedTests(
-  "deno-kv:evict",
-  new CacheStorage(
-    {
-      create: async () => new CachePersistenceDenoKv({ max: 1, min: 1 }),
-    },
-    _kvSharedNormalizer,
-  ),
-  { staleRetention: "evict" },
-);
-
-runSharedTests(
-  "deno-kv:retain",
-  new CacheStorage(
-    {
+{
+  const opts = { staleRetention: "evict" as const };
+  runSharedTests(
+    "deno-kv:evict",
+    new CacheStorage({
       create: async () =>
         new CachePersistenceDenoKv({
+          ...opts,
           max: 1,
           min: 1,
-          staleRetention: "retain",
         }),
-    },
-    _kvSharedNormalizer,
-  ),
-  { staleRetention: "retain" },
-);
+    }, _kvSharedNormalizer),
+    opts,
+  );
+}
+
+{
+  const opts = { staleRetention: "retain" as const };
+  runSharedTests(
+    "deno-kv:retain",
+    new CacheStorage(
+      {
+        create: async () =>
+          new CachePersistenceDenoKv({
+            ...opts,
+            max: 1,
+            min: 1,
+          }),
+      },
+      _kvSharedNormalizer,
+    ),
+    opts,
+  );
+}

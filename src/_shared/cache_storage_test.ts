@@ -12,11 +12,11 @@ import { CacheStorage } from "../core/cache_storage.ts";
 
 const now = () => (Math.floor(Date.now() / 1000) * 1000);
 
-export function runSharedTests(
+export async function runSharedTests(
   label: string,
   caches: CacheStorageLike,
   options?: { staleRetention?: "evict" | "retain" },
-): void {
+): Promise<void> {
   const isNative = caches instanceof CacheStorage === false;
   const retentionMode = options?.staleRetention ?? "evict";
 
@@ -1741,4 +1741,6 @@ export function runSharedTests(
       },
     });
   });
+
+  await (caches as any)[Symbol.asyncDispose]?.();
 }

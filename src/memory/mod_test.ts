@@ -217,30 +217,26 @@ Deno.test("memory factory", async (t) => {
 const _memorySharedNormalizer = (name: string, value: string | null) =>
   name === "user-agent" ? "firefox" : value;
 
-runSharedTests(
-  "memory:evict",
-  new CacheStorage(
-    undefined,
-    _memorySharedNormalizer,
-  ),
-  { staleRetention: "evict" },
-);
+{
+  const opts = { staleRetention: "evict" as const };
+  await using instance = new CachePersistenceMemory(opts);
+  runSharedTests(
+    "memory:evict",
+    new CacheStorage({
+      create: async () => instance,
+    }, _memorySharedNormalizer),
+    opts,
+  );
+}
 
-runSharedTests(
-  "memory:retain",
-  new CacheStorage(
-    (() => {
-      let persistence;
-      return {
-        async create() {
-          persistence ??= new CachePersistenceMemory({
-            staleRetention: "retain",
-          });
-          return persistence;
-        },
-      };
-    })(),
-    _memorySharedNormalizer,
-  ),
-  { staleRetention: "retain" },
-);
+{
+  const opts = { staleRetention: "retain" as const };
+  await using instance = new CachePersistenceMemory(opts);
+  runSharedTests(
+    "memory:retain",
+    new CacheStorage({
+      create: async () => instance,
+    }, _memorySharedNormalizer),
+    opts,
+  );
+}

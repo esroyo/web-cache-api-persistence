@@ -6,6 +6,7 @@ import { CacheStorage } from "../src/core/cache_storage.ts";
 import { createStorage } from "unstorage";
 import denoKvDriver from "unstorage/drivers/deno-kv";
 import fsLiteDriver from "unstorage/drivers/fs-lite";
+import memoryDriver from "unstorage/drivers/lru-cache";
 import redisDriver from "unstorage/drivers/redis";
 import {
   generateRandomRequest,
@@ -42,40 +43,31 @@ const cacheKv = await cachesKv.open("default");
 const cachesMemory = new CacheStorage(CachePersistenceMemory);
 const cacheMemory = await cachesMemory.open("default");
 
-const storageMem = createStorage();
+const storageMem = createStorage({ driver: memoryDriver({}) });
 const cachesUnstorageMem = new CacheStorage({
-  create: () =>
-    Promise.resolve(new CachePersistenceUnstorage({ storage: storageMem })),
+  create: async () => new CachePersistenceUnstorage({ storage: storageMem }),
 });
 const cacheUnstorageMem = await cachesUnstorageMem.open("default");
 
-// unstorage deno-kv driver does not support TTL (same limitation as in tests).
-// const storageKv = createStorage({ driver: denoKvDriver() });
-// const cachesUnstorageKv = new CacheStorage({
-//   create: () =>
-//     Promise.resolve(new CachePersistenceUnstorage({ storage: storageKv })),
-// });
-// const cacheUnstorageKv = await cachesUnstorageKv.open("default");
+const storageKv = createStorage({ driver: denoKvDriver({}) });
+const cachesUnstorageKv = new CacheStorage({
+  create: async () => new CachePersistenceUnstorage({ storage: storageKv }),
+});
+const cacheUnstorageKv = await cachesUnstorageKv.open("default");
 
 const storageRedis = createStorage({
-  // @ts-expect-error — Deno npm type resolution (#805)
   driver: redisDriver({ url: `redis://127.0.0.1:${port}` }),
 });
 const cachesUnstorageRedis = new CacheStorage({
-  create: () =>
-    Promise.resolve(
-      new CachePersistenceUnstorage({ storage: storageRedis }),
-    ),
+  create: async () => new CachePersistenceUnstorage({ storage: storageRedis }),
 });
 const cacheUnstorageRedis = await cachesUnstorageRedis.open("default");
 
 const storageFs = createStorage({
-  // @ts-expect-error — Deno npm type resolution (#805)
   driver: fsLiteDriver({ base: "tmp/bench-fs" }),
 });
 const cachesUnstorageFs = new CacheStorage({
-  create: () =>
-    Promise.resolve(new CachePersistenceUnstorage({ storage: storageFs })),
+  create: async () => new CachePersistenceUnstorage({ storage: storageFs }),
 });
 const cacheUnstorageFs = await cachesUnstorageFs.open("default");
 
@@ -205,8 +197,6 @@ Deno.bench(
   },
 );
 
-// unstorage deno-kv driver does not support TTL.
-/*
 Deno.bench(
   "CachePersistenceUnstorageDenoKv",
   { group: "put(req, res)" },
@@ -226,7 +216,6 @@ Deno.bench(
     });
   },
 );
-*/
 
 Deno.bench(
   "CachePersistenceUnstorageRedis",
@@ -332,8 +321,6 @@ Deno.bench(
   },
 );
 
-// unstorage deno-kv driver does not support TTL.
-/*
 Deno.bench(
   "CachePersistenceUnstorageDenoKv",
   { group: "match(req)" },
@@ -347,7 +334,6 @@ Deno.bench(
     await clean();
   },
 );
-*/
 
 Deno.bench(
   "CachePersistenceUnstorageRedis",
@@ -447,8 +433,6 @@ Deno.bench(
   },
 );
 
-// unstorage deno-kv driver does not support TTL.
-/*
 Deno.bench(
   "CachePersistenceUnstorageDenoKv",
   { group: "matchAll(req)" },
@@ -462,7 +446,6 @@ Deno.bench(
     await clean();
   },
 );
-*/
 
 Deno.bench(
   "CachePersistenceUnstorageRedis",
@@ -562,8 +545,6 @@ Deno.bench(
   },
 );
 
-// unstorage deno-kv driver does not support TTL.
-/*
 Deno.bench(
   "CachePersistenceUnstorageDenoKv",
   { group: "matchAll()" },
@@ -576,7 +557,6 @@ Deno.bench(
     await clean();
   },
 );
-*/
 
 Deno.bench(
   "CachePersistenceUnstorageRedis",
@@ -675,8 +655,6 @@ Deno.bench(
   },
 );
 
-// unstorage deno-kv driver does not support TTL.
-/*
 Deno.bench(
   "CachePersistenceUnstorageDenoKv",
   { group: "delete(req)" },
@@ -694,7 +672,6 @@ Deno.bench(
     await clean();
   },
 );
-*/
 
 Deno.bench(
   "CachePersistenceUnstorageRedis",
@@ -769,8 +746,6 @@ Deno.bench(
   },
 );
 
-// unstorage deno-kv driver does not support TTL.
-/*
 Deno.bench(
   "CachePersistenceUnstorageDenoKv",
   { group: "delete()" },
@@ -778,7 +753,6 @@ Deno.bench(
     await cachesUnstorageKv.delete("default");
   },
 );
-*/
 
 Deno.bench(
   "CachePersistenceUnstorageRedis",

@@ -8,6 +8,10 @@ export type RedisClient = Pick<Redis, "sendCommand"> & {
   pipeline: () => RedisClient & Pick<RedisPipeline, "flush">;
 };
 
+export interface CachePersistenceQueryOptions {
+  ignoreRetention?: boolean;
+}
+
 /**
  * Provides a persistence mechanism to be used by the Cache object.
  */
@@ -57,6 +61,7 @@ export interface CachePersistenceLike {
   get(
     cacheName: string,
     request: Request,
+    options?: CachePersistenceQueryOptions,
   ): AsyncGenerator<readonly [Request, Response], void, unknown>;
 
   /**
@@ -65,7 +70,10 @@ export interface CachePersistenceLike {
    * The pairs are returned in the order that they were inserted, that is older
    * pairs are yielded first.
    */
-  [Symbol.asyncIterator](cacheName: string): AsyncGenerator<
+  [Symbol.asyncIterator](
+    cacheName: string,
+    options?: CachePersistenceQueryOptions,
+  ): AsyncGenerator<
     readonly [Request, Response],
     void,
     unknown
@@ -142,7 +150,7 @@ export interface CacheLike extends Cache {
    */
   keys(
     request?: RequestInfo | URL,
-    options?: CacheQueryOptions,
+    options?: CacheQueryOptions & CachePersistenceQueryOptions,
   ): Promise<ReadonlyArray<Request>>;
 
   /**
