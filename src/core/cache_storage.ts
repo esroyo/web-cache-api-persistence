@@ -79,13 +79,15 @@ export class CacheStorage implements CacheStorageLike {
     if (!(await this.has(cacheName))) {
       return false;
     }
+    const options = {
+      ignoreRetention: true,
+      ignoreMethod: true,
+      ignoreSearch: true,
+      ignoreVary: true,
+    };
     await using cache = await this.open(cacheName);
-    for (const request of await cache.keys()) {
-      await cache.delete(request, {
-        ignoreMethod: true,
-        ignoreSearch: true,
-        ignoreVary: true,
-      });
+    for (const request of await cache.keys(undefined, options)) {
+      await cache.delete(request, options);
     }
     this._openedCaches.splice(
       this._openedCaches.findIndex((v) => v === cacheName),

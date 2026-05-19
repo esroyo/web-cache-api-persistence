@@ -6,6 +6,7 @@ import type {
   CachePersistenceDenoKvOptions,
   CachePersistenceFactory,
   CachePersistenceLike,
+  CachePersistenceQueryOptions,
   PlainReqRes,
 } from "../core/types.ts";
 import { CachePersistenceBase } from "../core/cache_persistence_base.ts";
@@ -107,6 +108,7 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
   async *get(
     cacheName: string,
     request: Request,
+    options?: CachePersistenceQueryOptions,
   ): AsyncGenerator<readonly [Request, Response], void, unknown> {
     const persistenceKey = await this._persistenceKey(cacheName, request);
     const keys = await this._dbKeys(persistenceKey);
@@ -116,7 +118,9 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
         continue;
       }
       const expired = this._hasExpired(plainReqRes);
-      if (expired && this._staleRetention === "evict") {
+      if (
+        expired && !options?.ignoreRetention && this._staleRetention === "evict"
+      ) {
         continue;
       }
       yield [
@@ -128,6 +132,7 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
 
   [Symbol.asyncIterator](
     cacheName: string,
+    options?: CachePersistenceQueryOptions,
   ): AsyncGenerator<readonly [Request, Response], void, unknown> {
     const prefix =
       "Failed to execute '[[Symbol.asyncIterator]]' on 'CachePersistence'";
@@ -142,7 +147,10 @@ export class CachePersistenceDenoKv extends CachePersistenceBase
           continue;
         }
         const expired = instance._hasExpired(plainReqRes);
-        if (expired && instance._staleRetention === "evict") {
+        if (
+          expired && !options?.ignoreRetention &&
+          instance._staleRetention === "evict"
+        ) {
           continue;
         }
         yield [

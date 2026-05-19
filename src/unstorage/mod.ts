@@ -4,6 +4,7 @@ import type {
   CachePersistenceBaseOptions,
   CachePersistenceFactory,
   CachePersistenceLike,
+  CachePersistenceQueryOptions,
   PlainReqRes,
 } from "../core/types.ts";
 import * as webidl from "../core/webidl.ts";
@@ -73,11 +74,14 @@ export class CachePersistenceUnstorage extends CachePersistenceBase
         cacheName,
         request,
       );
-      const toDelete: string[] = [];
-      for await (const key of this._dbKeys(persistenceKey)) {
-        toDelete.push(key);
+      const keys = await this._dbKeys(persistenceKey);
+      let hasDeleted = false;
+      for (const key of keys) {
+        if (await this._dbDel(key)) {
+          hasDeleted = true;
+        }
       }
-      return await this._dbDel(...toDelete);
+      return hasDeleted;
     }
 
     const persistenceKey = await this._persistenceKey(
@@ -92,39 +96,31 @@ export class CachePersistenceUnstorage extends CachePersistenceBase
   async *get(
     cacheName: string,
     request: Request,
+    options?: CachePersistenceQueryOptions,
   ): AsyncGenerator<readonly [Request, Response], void, unknown> {
     const persistenceKey = await this._persistenceKey(cacheName, request);
-    const asyncIterator = this._dbKeys(persistenceKey);
-    let done = false;
-    while (!done) {
-      const candidateKeys: string[] = [];
-      for (let count = 0; count < 1_000 && !done; count += 1) {
-        const iteratorResult = await asyncIterator.next();
-        if (iteratorResult.value) {
-          candidateKeys.push(iteratorResult.value);
-        } else {
-          done = true;
-        }
+    const keys = await this._dbKeys(persistenceKey);
+    for (const key of keys) {
+      const plainReqRes = await this._dbGet(key);
+      if (!plainReqRes) {
+        continue;
       }
-      const plainReqResList = await this._dbGet(candidateKeys);
-      for (const plainReqRes of plainReqResList) {
-        if (!plainReqRes) {
-          continue;
-        }
-        const expired = this._hasExpired(plainReqRes);
-        if (expired && this._staleRetention === "evict") {
-          continue;
-        }
-        yield [
-          this._plainToRequest(plainReqRes),
-          this._plainToResponse(plainReqRes, { stale: expired }),
-        ] as const;
+      const expired = this._hasExpired(plainReqRes);
+      if (
+        expired && !options?.ignoreRetention && this._staleRetention === "evict"
+      ) {
+        continue;
       }
+      yield [
+        this._plainToRequest(plainReqRes),
+        this._plainToResponse(plainReqRes, { stale: expired }),
+      ] as const;
     }
   }
 
   [Symbol.asyncIterator](
     cacheName: string,
+    options?: CachePersistenceQueryOptions,
   ): AsyncGenerator<readonly [Request, Response], void, unknown> {
     const prefix =
       "Failed to execute '[[Symbol.asyncIterator]]' on 'CachePersistence'";
@@ -136,12 +132,15 @@ export class CachePersistenceUnstorage extends CachePersistenceBase
           `cachestorage:${cacheName}:`,
         )
       ) {
-        const [plainReqRes] = await instance._dbGet([key]);
+        const plainReqRes = await instance._dbGet(key);
         if (!plainReqRes) {
           continue;
         }
         const expired = instance._hasExpired(plainReqRes);
-        if (expired && instance._staleRetention === "evict") {
+        if (
+          expired && !options?.ignoreRetention &&
+          instance._staleRetention === "evict"
+        ) {
           continue;
         }
         yield [
@@ -152,8 +151,8 @@ export class CachePersistenceUnstorage extends CachePersistenceBase
     })();
   }
 
-  [Symbol.asyncDispose](): Promise<void> {
-    return Promise.resolve();
+  async [Symbol.asyncDispose](): Promise<void> {
+    await this._storage?.dispose?.();
   }
 
   protected async _dbScan(prefix: string): Promise<string[]> {
@@ -161,9 +160,7 @@ export class CachePersistenceUnstorage extends CachePersistenceBase
     const found: string[] = [];
     for (const k of allKeys) {
       const parts = this._splitKey(k);
-      // old format: 3 segments (cachestorage:name:digest)
-      // new format: 3 segments, 3rd suffixed with "_" (cachestorage:name:digest_)
-      if (parts.length === 3) {
+      if (parts.length === 3 && parts[2].endsWith("_")) {
         const raw = await this._storage.getItemRaw(k);
         if (!raw) {
           continue;
@@ -177,74 +174,61 @@ export class CachePersistenceUnstorage extends CachePersistenceBase
     return found;
   }
 
-  protected async *_dbKeys(
-    key: string[] | string,
-  ): AsyncGenerator<string, void, unknown> {
+  protected async _dbKeys(key: string[] | string): Promise<string[]> {
     const indexKey = this._indexKey(key);
     const raw = await this._storage.getItemRaw(indexKey);
     if (!raw) {
-      return;
+      return [];
     }
     const entries = this._parseIndex(raw);
-    for (const entry of [...entries].sort()) {
-      yield entry;
-    }
+    return [...entries].sort();
   }
 
   protected async _dbGet(
-    keys: Array<string[] | string>,
-  ): Promise<Array<PlainReqRes | null>> {
-    const parsed: Array<PlainReqRes | null> = [];
-    for (const key of keys) {
-      const persistenceKey = Array.isArray(key) ? this._joinKey(key) : key;
-      const raw = await this._storage.getItemRaw(persistenceKey);
-      if (!raw) {
-        await this._dbDel(key);
-        parsed.push(null);
-      } else {
-        parsed.push(this._parse(raw as Uint8Array) as PlainReqRes);
-      }
+    key: string[] | string,
+  ): Promise<PlainReqRes | null> {
+    const persistenceKey = Array.isArray(key) ? this._joinKey(key) : key;
+    const raw = await this._storage.getItemRaw(persistenceKey);
+    if (!raw) {
+      await this._dbDel(key);
+      return null;
     }
-    return parsed;
+    return this._parse(raw as Uint8Array) as PlainReqRes;
   }
 
   protected async _dbDel(
-    ...keys: Array<string[] | string>
+    key: string[] | string,
   ): Promise<boolean> {
-    const indexKeys = new Set<string>();
-    let hasDeleted = false;
-
-    for (const key of keys) {
-      const persistenceKey = Array.isArray(key) ? this._joinKey(key) : key;
-      const existing = await this._storage.getItemRaw(persistenceKey);
-      if (existing) {
-        await this._storage.removeItem(persistenceKey);
-        hasDeleted = true;
-      }
-      indexKeys.add(this._indexKey(key));
+    const persistenceKey = Array.isArray(key) ? this._joinKey(key) : key;
+    const existing = await this._storage.getItemRaw(persistenceKey);
+    if (existing) {
+      await this._storage.removeItem(persistenceKey);
     }
 
-    for (const indexKey of indexKeys) {
-      const raw = await this._storage.getItemRaw(indexKey);
-      if (!raw) {
-        continue;
-      }
-      const entries = this._parseIndex(raw);
-      for (const key of keys) {
-        const persistenceKey = Array.isArray(key) ? this._joinKey(key) : key;
-        entries.delete(persistenceKey);
-      }
-      if (entries.size > 0) {
-        await this._storage.setItemRaw(
-          indexKey,
-          this._serializeIndex(entries),
-        );
-      } else {
-        await this._storage.removeItem(indexKey);
-      }
+    const indexKey = this._indexKey(key);
+    const raw = await this._storage.getItemRaw(indexKey);
+    if (!raw) {
+      return !!existing;
     }
 
-    return hasDeleted;
+    const entries = this._parseIndex(raw);
+    entries.delete(persistenceKey);
+
+    if (entries.size > 0) {
+      await this._storage.setItemRaw(
+        indexKey,
+        this._serializeIndex(entries),
+      );
+    } else {
+      await Promise.all([
+        // Delete the index
+        this._storage.removeItem(indexKey),
+        // Delete the entries "parent key" which may not exist depending on driver
+        this._storage.removeItem(indexKey.slice(0, -1)),
+      ]);
+    }
+
+    return !!existing;
   }
 
   protected async _dbSet(
@@ -280,6 +264,12 @@ export class CachePersistenceUnstorage extends CachePersistenceBase
   private _parseIndex(raw: unknown): Set<string> {
     if (!raw) {
       return new Set();
+    }
+    if (raw instanceof Set) {
+      return raw;
+    }
+    if (raw instanceof Array) {
+      return new Set(raw);
     }
     const str = raw instanceof Uint8Array
       ? new TextDecoder().decode(raw)

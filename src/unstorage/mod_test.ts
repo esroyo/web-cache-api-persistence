@@ -2,6 +2,8 @@ import { assert, assertEquals, assertRejects } from "@std/assert";
 import { createStorage as createUnstorage } from "unstorage";
 import fsLiteDriver from "unstorage/drivers/fs-lite";
 import redisDriver from "unstorage/drivers/redis";
+import denoKvDriver from "unstorage/drivers/deno-kv";
+import memoryDriver from "unstorage/drivers/lru-cache";
 import { runSharedTests } from "../_shared/cache_storage_test.ts";
 import { nextPort, startRedis } from "../core/test_utils.ts";
 import { CachePersistenceUnstorage } from "./mod.ts";
@@ -54,133 +56,155 @@ const _redisServer = await startRedis({ port: _redisPort });
 const _normalizer = (name: string, value: string | null) =>
   name === "user-agent" ? "firefox" : value;
 
-const _memoryStorage = createUnstorage();
-runSharedTests(
-  "unstorage:memory:evict",
-  new CacheStorage(
-    {
-      create: () =>
-        Promise.resolve(
-          new CachePersistenceUnstorage({ storage: _memoryStorage }),
-        ),
-    },
-    _normalizer,
-  ),
-  { staleRetention: "evict" },
-);
+{
+  const opts = { staleRetention: "evict" as const };
+  await using instance = new CachePersistenceUnstorage({
+    ...opts,
+    storage: createUnstorage({ driver: memoryDriver({}) }),
+  });
+  const originalDispose = instance[Symbol.asyncDispose];
+  // @ts-ignore
+  instance[Symbol.asyncDispose] = undefined;
+  await runSharedTests(
+    "unstorage:memory:evict",
+    Object.assign(
+      new CacheStorage({
+        create: async () => instance,
+      }, _normalizer),
+      { [Symbol.asyncDispose]: originalDispose },
+    ),
+    opts,
+  );
+}
 
-runSharedTests(
-  "unstorage:memory:retain",
-  new CacheStorage(
-    {
-      create: () =>
-        Promise.resolve(
-          new CachePersistenceUnstorage({
-            storage: _memoryStorage,
-            staleRetention: "retain",
+{
+  const opts = { staleRetention: "retain" as const };
+  await using instance = new CachePersistenceUnstorage({
+    ...opts,
+    storage: createUnstorage({ driver: memoryDriver({}) }),
+  });
+  const originalDispose = instance[Symbol.asyncDispose];
+  // @ts-ignore
+  instance[Symbol.asyncDispose] = undefined;
+  await runSharedTests(
+    "unstorage:memory:retain",
+    Object.assign(
+      new CacheStorage({
+        create: async () => instance,
+      }, _normalizer),
+      { [Symbol.asyncDispose]: originalDispose },
+    ),
+    opts,
+  );
+}
+
+{
+  const opts = { staleRetention: "evict" as const };
+  runSharedTests(
+    "unstorage:deno-kv:evict",
+    new CacheStorage({
+      create: async () =>
+        new CachePersistenceUnstorage({
+          ...opts,
+          storage: createUnstorage({
+            driver: denoKvDriver({}),
           }),
-        ),
-    },
-    _normalizer,
-  ),
-  { staleRetention: "retain" },
-);
+        }),
+    }, _normalizer),
+    opts,
+  );
+}
 
-// unstorage deno-kv driver does not support TTL (the `ttl` option is silently
-// ignored), so entries past HTTP expiration accumulate without being evicted.
-// This causes false positives in `has()` and leaves stale data in the
-// persistent database.  This is a driver limitation, not a library bug.
-// Re-enable when unstorage fixes the driver.
-// const _denoKvStorage = createUnstorage({ driver: denoKvDriver() });
-// runSharedTests("unstorage:deno-kv", ...);
+{
+  const opts = { staleRetention: "retain" as const };
+  runSharedTests(
+    "unstorage:deno-kv:retain",
+    new CacheStorage({
+      create: async () =>
+        new CachePersistenceUnstorage({
+          ...opts,
+          storage: createUnstorage({
+            driver: denoKvDriver({}),
+          }),
+        }),
+    }, _normalizer),
+    opts,
+  );
+}
 
-const _redisStorage = createUnstorage({
-  // @ts-expect-error — Deno npm type resolution (#805)
-  driver: redisDriver({ url: `redis://127.0.0.1:${_redisPort}` }),
-});
-// Eagerly open the connection before tests so Deno's per-test leak
-// detection doesn't flag the TCP socket as leaked during a test run.
-await _redisStorage.setItem("__probe__", "1");
-await _redisStorage.removeItem("__probe__");
-runSharedTests(
-  "unstorage:redis:evict",
-  new CacheStorage(
-    {
-      create: () =>
-        Promise.resolve(
-          new CachePersistenceUnstorage({ storage: _redisStorage }),
-        ),
-    },
-    _normalizer,
-  ),
-  { staleRetention: "evict" },
-);
+{
+  const opts = { staleRetention: "evict" as const };
+  const db = Math.floor(Math.random() * 10);
+  runSharedTests(
+    "unstorage:redis:evict",
+    new CacheStorage({
+      create: async () =>
+        new CachePersistenceUnstorage({
+          ...opts,
+          storage: createUnstorage({
+            driver: redisDriver({
+              url: `redis://127.0.0.1:${_redisPort}/${db}`,
+            }),
+          }),
+        }),
+    }, _normalizer),
+    opts,
+  );
+}
 
-runSharedTests(
-  "unstorage:redis:retain",
-  new CacheStorage(
-    (() => {
-      let persistence;
-      return {
-        async create() {
-          persistence ??= new CachePersistenceUnstorage({
-            storage: _redisStorage,
-            staleRetention: "retain",
-          });
-          return persistence;
-        },
-      };
-    })(),
-    _normalizer,
-  ),
-  { staleRetention: "retain" },
-);
-addEventListener("unload", () => {
-  _redisStorage.dispose?.();
-  try {
-    Deno.removeSync("tmp/test-fs", { recursive: true });
-  } catch {
-    // ignore if already removed
-  }
-});
+{
+  const opts = { staleRetention: "retain" as const };
+  const db = Math.floor(Math.random() * 10);
+  runSharedTests(
+    "unstorage:redis:retain",
+    new CacheStorage({
+      create: async () =>
+        new CachePersistenceUnstorage({
+          ...opts,
+          storage: createUnstorage({
+            driver: redisDriver({
+              url: `redis://127.0.0.1:${_redisPort}/${db}`,
+            }),
+          }),
+        }),
+    }, _normalizer),
+    opts,
+  );
+}
 
-const _fsStorage = createUnstorage({
-  // @ts-expect-error — Deno npm type resolution (#805)
-  driver: fsLiteDriver({ base: "tmp/test-fs" }),
-});
-runSharedTests(
-  "unstorage:fs-lite:evict",
-  new CacheStorage(
-    {
-      create: () =>
-        Promise.resolve(
-          new CachePersistenceUnstorage({ storage: _fsStorage }),
-        ),
-    },
-    _normalizer,
-  ),
-  { staleRetention: "evict" },
-);
+{
+  const opts = { staleRetention: "evict" as const };
+  runSharedTests(
+    "unstorage:fs-lite:evict",
+    new CacheStorage({
+      create: async () =>
+        new CachePersistenceUnstorage({
+          ...opts,
+          storage: createUnstorage({
+            driver: fsLiteDriver({ base: "tmp/test-fs-evict" }),
+          }),
+        }),
+    }, _normalizer),
+    opts,
+  );
+}
 
-runSharedTests(
-  "unstorage:fs-lite:retain",
-  new CacheStorage(
-    (() => {
-      let persistence;
-      return {
-        async create() {
-          persistence ??= new CachePersistenceUnstorage({
-            storage: _fsStorage,
-            staleRetention: "retain",
-          });
-          return persistence;
-        },
-      };
-    })(),
-    _normalizer,
-  ),
-  { staleRetention: "retain" },
-);
+{
+  const opts = { staleRetention: "retain" as const };
+  runSharedTests(
+    "unstorage:fs-lite:retain",
+    new CacheStorage({
+      create: async () =>
+        new CachePersistenceUnstorage({
+          ...opts,
+          storage: createUnstorage({
+            driver: fsLiteDriver({ base: "tmp/test-fs-retain" }),
+          }),
+        }),
+    }, _normalizer),
+    opts,
+  );
+}
 
 Deno.test("unstorage factory", async (t) => {
   await t.step("default and named exports are identity-equal", () => {

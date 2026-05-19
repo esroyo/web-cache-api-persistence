@@ -82,39 +82,50 @@ Deno.test("denoRedis factory", async (t) => {
 const _redisSharedNormalizer = (name: string, value: string | null) =>
   name === "user-agent" ? "firefox" : value;
 
-runSharedTests(
-  "deno-redis:evict",
-  new CacheStorage(
-    {
-      create: async () =>
-        new CachePersistenceDenoRedis({
-          port,
-          hostname: "127.0.0.1",
-          max: 1,
-          min: 1,
-        }),
-    },
-    _redisSharedNormalizer,
-  ),
-  { staleRetention: "evict" },
-);
+{
+  const opts = { staleRetention: "evict" as const };
+  const db = Math.floor(Math.random() * 10);
+  runSharedTests(
+    "deno-redis:evict",
+    new CacheStorage(
+      {
+        create: async () =>
+          new CachePersistenceDenoRedis({
+            ...opts,
+            db,
+            port,
+            hostname: "127.0.0.1",
+            max: 1,
+            min: 1,
+          }),
+      },
+      _redisSharedNormalizer,
+    ),
+    opts,
+  );
+}
 
-runSharedTests(
-  "deno-redis:retain",
-  new CacheStorage(
-    {
-      create: async () =>
-        new CachePersistenceDenoRedis({
-          port,
-          hostname: "127.0.0.1",
-          max: 1,
-          min: 1,
-          staleRetention: "retain",
-        }),
-    },
-    _redisSharedNormalizer,
-  ),
-  { staleRetention: "retain" },
-);
+{
+  const opts = { staleRetention: "retain" as const };
+  const db = Math.floor(Math.random() * 10);
+  runSharedTests(
+    "deno-redis:retain",
+    new CacheStorage(
+      {
+        create: async () =>
+          new CachePersistenceDenoRedis({
+            ...opts,
+            db,
+            port,
+            hostname: "127.0.0.1",
+            max: 1,
+            min: 1,
+          }),
+      },
+      _redisSharedNormalizer,
+    ),
+    opts,
+  );
+}
 
 // stopRedis(server);

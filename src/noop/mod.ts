@@ -2,6 +2,7 @@ import type {
   CachePersistenceBaseOptions,
   CachePersistenceFactory,
   CachePersistenceLike,
+  CachePersistenceQueryOptions,
 } from "../core/types.ts";
 
 export type { CachePersistenceBaseOptions };
@@ -52,18 +53,20 @@ export class CachePersistenceNoop implements CachePersistenceLike {
   async *get(
     cacheName: string,
     request: Request,
+    options?: CachePersistenceQueryOptions,
   ): AsyncGenerator<readonly [Request, Response], void, unknown> {
     console.log(
-      { method: "get", cacheName, request },
+      { method: "get", cacheName, request, options },
       `\n${"-".repeat(80)}`,
     );
   }
 
   [Symbol.asyncIterator](
     cacheName: string,
+    options?: CachePersistenceQueryOptions,
   ): AsyncGenerator<readonly [Request, Response], void, unknown> {
     console.log(
-      { method: "[[Symbol.asyncIterator]]", cacheName },
+      { method: "[[Symbol.asyncIterator]]", cacheName, options },
       `\n${"-".repeat(80)}`,
     );
     return (async function* () {})();
