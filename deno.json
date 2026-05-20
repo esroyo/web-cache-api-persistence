@@ -42,7 +42,8 @@
     "msgpack-lite": "npm:msgpack-lite@0.1.26",
     "sorted": "npm:sorted-array-functions@1.3.0",
     "ioredis": "npm:ioredis@5.5.0",
-    "unstorage": "npm:unstorage@1.17.5"
+    "unstorage": "npm:unstorage@1.17.5",
+    "db0": "npm:db0"
   },
   "nodeModulesDir": "none"
 }

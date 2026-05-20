@@ -4,6 +4,9 @@ import fsLiteDriver from "unstorage/drivers/fs-lite";
 import redisDriver from "unstorage/drivers/redis";
 import denoKvDriver from "unstorage/drivers/deno-kv";
 import memoryDriver from "unstorage/drivers/lru-cache";
+import databaseDriver from "unstorage/drivers/db0";
+import { createDatabase } from "db0";
+import sqlite from "db0/connectors/node-sqlite";
 import { runSharedTests } from "../_shared/cache_storage_test.ts";
 import { nextPort, startRedis } from "../core/test_utils.ts";
 import { CachePersistenceUnstorage } from "./mod.ts";
@@ -127,6 +130,48 @@ const _normalizer = (name: string, value: string | null) =>
           ...opts,
           storage: createUnstorage({
             driver: denoKvDriver({ openKv: () => Deno.openKv(kvPath) }),
+          }),
+        }),
+    }, _normalizer),
+    opts,
+  );
+}
+
+{
+  const opts = { staleRetention: "evict" as const };
+  runSharedTests(
+    "unstorage:database:evict",
+    new CacheStorage({
+      create: async () =>
+        new CachePersistenceUnstorage({
+          ...opts,
+          storage: createUnstorage({
+            driver: databaseDriver({
+              database: createDatabase(
+                sqlite({ cwd: "tmp" }),
+              ),
+            }),
+          }),
+        }),
+    }, _normalizer),
+    opts,
+  );
+}
+
+{
+  const opts = { staleRetention: "retain" as const };
+  runSharedTests(
+    "unstorage:database:retain",
+    new CacheStorage({
+      create: async () =>
+        new CachePersistenceUnstorage({
+          ...opts,
+          storage: createUnstorage({
+            driver: databaseDriver({
+              database: createDatabase(
+                sqlite({ cwd: "tmp" }),
+              ),
+            }),
           }),
         }),
     }, _normalizer),

@@ -8,6 +8,9 @@ import denoKvDriver from "unstorage/drivers/deno-kv";
 import fsLiteDriver from "unstorage/drivers/fs-lite";
 import memoryDriver from "unstorage/drivers/lru-cache";
 import redisDriver from "unstorage/drivers/redis";
+import databaseDriver from "unstorage/drivers/db0";
+import { createDatabase } from "db0";
+import sqlite from "db0/connectors/node-sqlite";
 import {
   generateRandomRequest,
   generateRandomResponse,
@@ -70,6 +73,16 @@ const cachesUnstorageFs = new CacheStorage({
   create: async () => new CachePersistenceUnstorage({ storage: storageFs }),
 });
 const cacheUnstorageFs = await cachesUnstorageFs.open("default");
+
+const storageDb = createStorage({
+  driver: databaseDriver({
+    database: createDatabase(sqlite({ cwd: "tmp" })),
+  }),
+});
+const cachesUnstorageDb = new CacheStorage({
+  create: async () => new CachePersistenceUnstorage({ storage: storageDb }),
+});
+const cacheUnstorageDb = await cachesUnstorageDb.open("default");
 
 const cacheNative = await caches.open("default");
 
@@ -257,6 +270,26 @@ Deno.bench(
   },
 );
 
+Deno.bench(
+  "CachePersistenceUnstorageDatabase",
+  { group: "put(req, res)" },
+  async (b) => {
+    const cache = cacheUnstorageDb;
+    const request = generateRandomRequest();
+    const response = generateRandomResponse();
+    b.start();
+    try {
+      await cache.put(request, response);
+    } catch {}
+    b.end();
+    await cache.delete(request, {
+      ignoreMethod: true,
+      ignoreSearch: true,
+      ignoreVary: true,
+    });
+  },
+);
+
 // ---------------------------------
 
 Deno.bench(
@@ -354,6 +387,20 @@ Deno.bench(
   { group: "match(req)" },
   async (b) => {
     const cache = cacheUnstorageFs;
+    const clean = await fillCache(cache);
+    const request = generateRandomRequest();
+    b.start();
+    await cache.match(request);
+    b.end();
+    await clean();
+  },
+);
+
+Deno.bench(
+  "CachePersistenceUnstorageDatabase",
+  { group: "match(req)" },
+  async (b) => {
+    const cache = cacheUnstorageDb;
     const clean = await fillCache(cache);
     const request = generateRandomRequest();
     b.start();
@@ -476,6 +523,20 @@ Deno.bench(
 );
 
 Deno.bench(
+  "CachePersistenceUnstorageDatabase",
+  { group: "matchAll(req)" },
+  async (b) => {
+    const cache = cacheUnstorageDb;
+    const clean = await fillCache(cache);
+    const request = generateRandomRequest();
+    b.start();
+    await cache.matchAll(request);
+    b.end();
+    await clean();
+  },
+);
+
+Deno.bench(
   "CachePersistenceUnstorageFs",
   { group: "matchAll()" },
   async (b) => {
@@ -563,6 +624,19 @@ Deno.bench(
   { group: "matchAll()" },
   async (b) => {
     const cache = cacheUnstorageRedis;
+    const clean = await fillCache(cache);
+    b.start();
+    await cache.matchAll();
+    b.end();
+    await clean();
+  },
+);
+
+Deno.bench(
+  "CachePersistenceUnstorageDatabase",
+  { group: "matchAll()" },
+  async (b) => {
+    const cache = cacheUnstorageDb;
     const clean = await fillCache(cache);
     b.start();
     await cache.matchAll();
@@ -709,6 +783,24 @@ Deno.bench(
   },
 );
 
+Deno.bench(
+  "CachePersistenceUnstorageDatabase",
+  { group: "delete(req)" },
+  async (b) => {
+    const cache = cacheUnstorageDb;
+    const clean = await fillCache(cache);
+    const request = generateRandomRequest();
+    b.start();
+    await cache.delete(request, {
+      ignoreMethod: true,
+      ignoreSearch: true,
+      ignoreVary: true,
+    });
+    b.end();
+    await clean();
+  },
+);
+
 // ---------------------------------
 
 Deno.bench(
@@ -769,5 +861,13 @@ Deno.bench(
   { group: "delete()" },
   async (_b) => {
     await cachesUnstorageFs.delete("default");
+  },
+);
+
+Deno.bench(
+  "CachePersistenceUnstorageDatabase",
+  { group: "delete()" },
+  async (_b) => {
+    await cachesUnstorageDb.delete("default");
   },
 );
