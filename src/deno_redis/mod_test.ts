@@ -2,7 +2,7 @@ import { assert, assertEquals } from "@std/assert";
 import { CachePersistenceDenoRedis } from "./mod.ts";
 import { CacheStorage } from "../core/cache_storage.ts";
 import { runSharedTests } from "../_shared/cache_storage_test.ts";
-import { nextPort, startRedis } from "../core/test_utils.ts";
+import { nextPort, startRedis } from "../_shared/test_utils.ts";
 import type { CachePersistenceDenoRedisOptions } from "../core/types.ts";
 
 const port = nextPort();

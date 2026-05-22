@@ -17,7 +17,7 @@ import {
   nextPort,
   startRedis,
   stopRedis,
-} from "../src/core/test_utils.ts";
+} from "../src/_shared/test_utils.ts";
 
 // const port = 6379;
 const port = nextPort();

@@ -11,7 +11,7 @@
   },
   "tasks": {
     "bench": "deno bench -A --unstable-kv bench/cache_persistence_bench.ts && rm -rf tmp/*",
-    "coverage": "deno task test --clean --reporter=dot --coverage=coverage && deno coverage --lcov --output=coverage.lcov --exclude='src/core/test_utils.ts|vendor' coverage && genhtml -o coverage/report coverage.lcov",
+    "coverage": "deno task test --clean --reporter=dot --coverage=coverage && deno coverage --lcov --output=coverage.lcov --exclude='src/_shared/test_utils.ts' coverage && genhtml -o coverage/report coverage.lcov",
     "fmt": "deno fmt src/",
     "release": "deno run -A npm:commit-and-tag-version && git push --follow-tags origin main && deno publish --allow-slow-types",
     "release:dry-run": "deno run -A npm:commit-and-tag-version --dry-run && deno publish --dry-run --allow-slow-types --allow-dirty",

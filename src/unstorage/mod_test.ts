@@ -8,7 +8,7 @@ import databaseDriver from "unstorage/drivers/db0";
 import { createDatabase } from "db0";
 import sqlite from "db0/connectors/node-sqlite";
 import { runSharedTests } from "../_shared/cache_storage_test.ts";
-import { nextPort, startRedis } from "../core/test_utils.ts";
+import { nextPort, startRedis } from "../_shared/test_utils.ts";
 import { CachePersistenceUnstorage } from "./mod.ts";
 import { CacheStorage } from "../core/cache_storage.ts";
 import type { CacheLike } from "../core/types.ts";
