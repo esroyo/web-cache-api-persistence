@@ -10,6 +10,7 @@ import type {
   PlainReqResMeta,
   PlainRes,
 } from "./types.ts";
+import { freshnessLifetimeMs } from "./utils.ts";
 
 export abstract class CachePersistenceBase {
   protected _decoder: TextDecoder = new TextDecoder();
@@ -131,41 +132,7 @@ export abstract class CachePersistenceBase {
   protected _expiresIn(
     response: Response,
   ): number {
-    const now = Date.now();
-    const cacheControl = response.headers.get("cache-control");
-    const cacheControlParts = cacheControl?.split(",");
-    if (cacheControl && cacheControlParts) {
-      const includesMaxAge = cacheControl.includes("max-age");
-      const includesSharedMaxAge = cacheControl.includes("s-maxage");
-      const priorityFieldName = includesSharedMaxAge ? "s-maxage" : "max-age";
-      if (includesMaxAge || includesSharedMaxAge) {
-        for (const fieldValue of cacheControlParts) {
-          const [field, value] = fieldValue.trim().split("=");
-          if (field === priorityFieldName) {
-            const dateValue = response.headers.get("date");
-            const ageValue = Number(response.headers.get("age")) ||
-              0;
-            const dateTime = dateValue ? new Date(dateValue).getTime() : now;
-            const correctedReceivedAge = Math.max(
-              (now - dateTime) / 1000,
-              ageValue,
-            );
-            const msLeft = Math.max(
-              (+value - correctedReceivedAge) * 1000,
-              0,
-            );
-            return Math.round(msLeft);
-          }
-        }
-      }
-    }
-    const expireDate = response.headers.get("expires");
-    if (expireDate) {
-      const expireEpochMs = new Date(expireDate).getTime();
-      const msLeft = Math.max(expireEpochMs - now, 0);
-      return Math.round(msLeft);
-    }
-    return 0;
+    return freshnessLifetimeMs(response);
   }
 
   protected _hasExpired(meta: PlainReqResMeta): boolean {

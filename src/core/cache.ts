@@ -5,6 +5,7 @@ import type {
   CachePersistenceLike,
   CachePersistenceQueryOptions,
 } from "./types.ts";
+import { requestMatches } from "./utils.ts";
 import * as webidl from "./webidl.ts";
 
 export class Cache implements CacheLike {
@@ -297,48 +298,13 @@ export class Cache implements CacheLike {
     response: Response | null = null,
     options?: CacheQueryOptions & CachePersistenceQueryOptions,
   ): boolean {
-    if (!options?.ignoreMethod && request.method !== "GET") {
-      return false;
-    }
-    const queryUrl = new URL(requestQuery.url);
-    const cachedUrl = new URL(request.url);
-    if (options?.ignoreSearch) {
-      queryUrl.search = "";
-      cachedUrl.search = "";
-    }
-    queryUrl.hash = "";
-    cachedUrl.hash = "";
-    if (queryUrl.toString() !== cachedUrl.toString()) {
-      return false;
-    }
-    if (
-      response === null ||
-      options?.ignoreVary ||
-      !response.headers.has("vary")
-    ) {
-      return true;
-    }
-    const varyHeader = response.headers.get("vary");
-    if (varyHeader) {
-      for (const _fieldValue of varyHeader.toLowerCase().split(",")) {
-        const fieldValue = _fieldValue.trim();
-        if (
-          fieldValue === "*" ||
-          this._headerNormalizer(
-              fieldValue,
-              request.headers.get(fieldValue),
-            ) !==
-            this._headerNormalizer(
-              fieldValue,
-              requestQuery.headers.get(fieldValue),
-            )
-        ) {
-          return false;
-        }
-      }
-    }
-
-    return true;
+    return requestMatches(
+      requestQuery,
+      request,
+      response,
+      options,
+      this._headerNormalizer,
+    );
   }
 
   protected async _processBatchOperations(): Promise<void> {

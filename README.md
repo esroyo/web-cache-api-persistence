@@ -311,6 +311,64 @@ if (cached) {
 }
 ```
 
+## Cache query utilities
+
+The package exports pure utility functions for HTTP freshness and W3C Cache
+query matching, importable from the package root:
+
+```ts
+import {
+  freshnessLifetimeMs,
+  isFreshResponse,
+  isStaleResponse,
+  requestMatches,
+} from "jsr:@esroyo/web-cache-api-persistence";
+```
+
+All four functions are pure computations over standard `Request`/`Response`
+objects.
+
+#### **`freshnessLifetimeMs(response, now?)`**
+
+Returns milliseconds until the response is stale per RFC 9111 §4.2.1 (`0` if no
+explicit freshness):
+
+```ts
+freshnessLifetimeMs(
+  new Response(null, {
+    headers: {
+      "cache-control": "max-age=3600",
+      date: new Date().toUTCString(),
+    },
+  }),
+); // ~3_600_000
+```
+
+#### **`isFreshResponse(response, now?)`**
+
+`true` when `freshnessLifetimeMs > 0`:
+
+```ts
+isFreshResponse(resp); // boolean
+```
+
+#### **`isStaleResponse(response, now?)`**
+
+Logical complement of `isFreshResponse`:
+
+```ts
+isStaleResponse(resp); // !isFreshResponse(resp)
+```
+
+#### **`requestMatches(query, cached, response?, options?, normalizer?)`**
+
+W3C Cache query matching (URL, method, Vary, `ignore*` options):
+
+```ts
+requestMatches(queryReq, cachedReq, cachedResp, { ignoreSearch: true });
+// true when URLs match ignoring search params
+```
+
 ## Key differences with the specification
 
 ### Cache lifetimes
