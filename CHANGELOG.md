@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.4.3](https://github.com/esroyo/web-cache-api-persistence/compare/v0.4.2...v0.4.3) (2026-05-22)
+
+
+### Features
+
+* extract standalone cache utility functions ([8c2852a](https://github.com/esroyo/web-cache-api-persistence/commit/8c2852a4a6a6ce38f28989e0147668a3e3d13407))
+
 ## [0.4.2](https://github.com/esroyo/web-cache-api-persistence/compare/v0.4.1...v0.4.2) (2026-05-19)
 
 
