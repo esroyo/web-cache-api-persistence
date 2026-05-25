@@ -220,7 +220,7 @@ const _memorySharedNormalizer = (name: string, value: string | null) =>
 {
   const opts = { staleRetention: "evict" as const };
   await using instance = new CachePersistenceMemory(opts);
-  runSharedTests(
+  await runSharedTests(
     "memory:evict",
     new CacheStorage({
       create: async () => instance,
@@ -232,7 +232,7 @@ const _memorySharedNormalizer = (name: string, value: string | null) =>
 {
   const opts = { staleRetention: "retain" as const };
   await using instance = new CachePersistenceMemory(opts);
-  runSharedTests(
+  await runSharedTests(
     "memory:retain",
     new CacheStorage({
       create: async () => instance,

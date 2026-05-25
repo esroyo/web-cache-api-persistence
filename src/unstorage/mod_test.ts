@@ -55,6 +55,12 @@ import unstorageDefault, { unstorage } from "./mod.ts";
 // Redis setup for multi-backend shared conformance tests
 const _redisPort = nextPort();
 const _redisServer = await startRedis({ port: _redisPort });
+globalThis.addEventListener("unload", () => {
+  try {
+    new Deno.Command("docker", { args: ["stop", _redisServer.containerId] })
+      .outputSync();
+  } catch {}
+});
 
 const _normalizer = (name: string, value: string | null) =>
   name === "user-agent" ? "firefox" : value;
@@ -104,7 +110,7 @@ const _normalizer = (name: string, value: string | null) =>
 {
   const kvPath = "tmp/test-unstorage-kv";
   const opts = { staleRetention: "evict" as const };
-  runSharedTests(
+  await runSharedTests(
     "unstorage:deno-kv:evict",
     new CacheStorage({
       create: async () =>
@@ -122,7 +128,7 @@ const _normalizer = (name: string, value: string | null) =>
 {
   const kvPath = "tmp/test-unstorage-kv";
   const opts = { staleRetention: "retain" as const };
-  runSharedTests(
+  await runSharedTests(
     "unstorage:deno-kv:retain",
     new CacheStorage({
       create: async () =>
@@ -139,7 +145,7 @@ const _normalizer = (name: string, value: string | null) =>
 
 {
   const opts = { staleRetention: "evict" as const };
-  runSharedTests(
+  await runSharedTests(
     "unstorage:database:evict",
     new CacheStorage({
       create: async () =>
@@ -160,7 +166,7 @@ const _normalizer = (name: string, value: string | null) =>
 
 {
   const opts = { staleRetention: "retain" as const };
-  runSharedTests(
+  await runSharedTests(
     "unstorage:database:retain",
     new CacheStorage({
       create: async () =>
@@ -182,7 +188,7 @@ const _normalizer = (name: string, value: string | null) =>
 {
   const opts = { staleRetention: "evict" as const };
   const db = Math.floor(Math.random() * 10);
-  runSharedTests(
+  await runSharedTests(
     "unstorage:redis:evict",
     new CacheStorage({
       create: async () =>
@@ -202,7 +208,7 @@ const _normalizer = (name: string, value: string | null) =>
 {
   const opts = { staleRetention: "retain" as const };
   const db = Math.floor(Math.random() * 10);
-  runSharedTests(
+  await runSharedTests(
     "unstorage:redis:retain",
     new CacheStorage({
       create: async () =>
@@ -221,7 +227,7 @@ const _normalizer = (name: string, value: string | null) =>
 
 {
   const opts = { staleRetention: "evict" as const };
-  runSharedTests(
+  await runSharedTests(
     "unstorage:fs-lite:evict",
     new CacheStorage({
       create: async () =>
@@ -238,7 +244,7 @@ const _normalizer = (name: string, value: string | null) =>
 
 {
   const opts = { staleRetention: "retain" as const };
-  runSharedTests(
+  await runSharedTests(
     "unstorage:fs-lite:retain",
     new CacheStorage({
       create: async () =>

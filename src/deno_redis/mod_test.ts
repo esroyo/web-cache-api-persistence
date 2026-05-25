@@ -7,6 +7,12 @@ import type { CachePersistenceDenoRedisOptions } from "../core/types.ts";
 
 const port = nextPort();
 const server = await startRedis({ port });
+globalThis.addEventListener("unload", () => {
+  try {
+    new Deno.Command("docker", { args: ["stop", server.containerId] })
+      .outputSync();
+  } catch {}
+});
 
 import denoRedisDefault, { CachePersistenceRedis, denoRedis } from "./mod.ts";
 
@@ -85,7 +91,7 @@ const _redisSharedNormalizer = (name: string, value: string | null) =>
 {
   const opts = { staleRetention: "evict" as const };
   const db = Math.floor(Math.random() * 10);
-  runSharedTests(
+  await runSharedTests(
     "deno-redis:evict",
     new CacheStorage(
       {
@@ -108,7 +114,7 @@ const _redisSharedNormalizer = (name: string, value: string | null) =>
 {
   const opts = { staleRetention: "retain" as const };
   const db = Math.floor(Math.random() * 10);
-  runSharedTests(
+  await runSharedTests(
     "deno-redis:retain",
     new CacheStorage(
       {
@@ -127,5 +133,3 @@ const _redisSharedNormalizer = (name: string, value: string | null) =>
     opts,
   );
 }
-
-// stopRedis(server);

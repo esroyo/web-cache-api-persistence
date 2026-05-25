@@ -7,6 +7,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     strategy:
       matrix:
@@ -14,7 +15,7 @@ jobs:
 
     steps:
       - name: Install lcov & redis-server
-        run: sudo apt-get install -y lcov redis-server
+        run: sudo apt-get install -y lcov
       - name: Git Checkout Deno Module
         uses: actions/checkout@v2
       - name: Use Deno Version ${{ matrix.deno-version }}
@@ -25,6 +26,8 @@ jobs:
         run: deno fmt --check src
       - name: Build Deno Module
         run: deno run --reload mod.ts
+      - name: Test test
+        run: deno task test
       - name: Test Deno Module
         run: deno task coverage
       - name: Upload coverage reports to Codecov

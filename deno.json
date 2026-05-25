@@ -24,7 +24,6 @@
       "openspec/",
       ".editorconfig",
       ".versionrc.json",
-      "redis.conf",
       "*_test.ts"
     ]
   },

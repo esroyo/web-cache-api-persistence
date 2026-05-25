@@ -69,7 +69,7 @@ const _kvSharedNormalizer = (name: string, value: string | null) =>
 
 {
   const opts = { staleRetention: "evict" as const };
-  runSharedTests(
+  await runSharedTests(
     "deno-kv:evict",
     new CacheStorage({
       create: async () =>
@@ -86,7 +86,7 @@ const _kvSharedNormalizer = (name: string, value: string | null) =>
 
 {
   const opts = { staleRetention: "retain" as const };
-  runSharedTests(
+  await runSharedTests(
     "deno-kv:retain",
     new CacheStorage(
       {

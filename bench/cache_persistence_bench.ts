@@ -16,12 +16,16 @@ import {
   generateRandomResponse,
   nextPort,
   startRedis,
-  stopRedis,
 } from "../src/_shared/test_utils.ts";
 
-// const port = 6379;
 const port = nextPort();
 const server = await startRedis({ port });
+globalThis.addEventListener("unload", () => {
+  try {
+    new Deno.Command("docker", { args: ["stop", server.containerId] })
+      .outputSync();
+  } catch {}
+});
 
 const cachesRedis = new CacheStorage({
   create: async () =>
@@ -58,11 +62,13 @@ const cachesUnstorageKv = new CacheStorage({
 });
 const cacheUnstorageKv = await cachesUnstorageKv.open("default");
 
-const storageRedis = createStorage({
-  driver: redisDriver({ url: `redis://127.0.0.1:${port}` }),
-});
 const cachesUnstorageRedis = new CacheStorage({
-  create: async () => new CachePersistenceUnstorage({ storage: storageRedis }),
+  create: async () => {
+    const storage = createStorage({
+      driver: redisDriver({ url: `redis://127.0.0.1:${port}` }),
+    });
+    return new CachePersistenceUnstorage({ storage });
+  },
 });
 const cacheUnstorageRedis = await cachesUnstorageRedis.open("default");
 
@@ -823,7 +829,6 @@ Deno.bench("CachePersistenceDenoRedis", { group: "delete()" }, async (b) => {
   b.start();
   await cachesRedis.delete("default");
   b.end();
-  //stopRedis(server);
 });
 
 Deno.bench("CachePersistenceKv", { group: "delete()" }, async (_b) => {

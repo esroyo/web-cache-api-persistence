@@ -1,6 +1,6 @@
-import opentelemetry from "@opentelemetry/api";
+import type opentelemetry from "@opentelemetry/api";
 import type { Redis, RedisConnectOptions, RedisPipeline } from "@db/redis";
-import { type Options as PoolOptions } from "generic-pool";
+import type { Options as PoolOptions } from "generic-pool";
 
 export type OpenTelemetry = typeof opentelemetry;
 

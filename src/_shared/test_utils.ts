@@ -1,95 +1,53 @@
 export interface TestServer {
-  path: string;
+  containerId: string;
   port: number;
-  process: Deno.ChildProcess;
 }
+
+const REDIS_IMAGE = "redis:7-alpine";
 
 export async function startRedis({
   port = 6379,
-  clusterEnabled = false,
-  makeClusterConfigFile = false,
+}: {
+  port?: number;
 }): Promise<TestServer> {
-  const path = tempPath(String(port));
-  if (!(await exists(path))) {
-    await Deno.mkdir(path, { recursive: true });
-  }
-
-  // Setup redis.conf
-  const destPath = `${path}/redis.conf`;
-  let config = await Deno.readTextFile("redis.conf");
-  config += `dir ${path}\nport ${port}\n`;
-  if (clusterEnabled) {
-    config += "cluster-enabled yes\n";
-    if (makeClusterConfigFile) {
-      const clusterConfigFile = `${path}/cluster.conf`;
-      config += `cluster-config-file ${clusterConfigFile}`;
-    }
-  }
-  await Deno.writeFile(destPath, new TextEncoder().encode(config));
-
-  // Start redis server
-  const process = new Deno.Command("redis-server", {
-    args: [`${path}/redis.conf`],
-    stdin: "null",
+  await new Deno.Command("docker", {
+    args: ["pull", REDIS_IMAGE],
     stdout: "null",
-    stderr: "piped",
+    stderr: "null",
+  }).output();
+
+  const process = new Deno.Command("docker", {
+    args: [
+      "run",
+      "-d",
+      "--rm",
+      "-p",
+      `${port}:6379`,
+      REDIS_IMAGE,
+    ],
+    stdout: "piped",
+    stderr: "null",
   }).spawn();
 
+  const { stdout } = await process.output();
+  const containerId = new TextDecoder().decode(stdout).trim();
   await waitForPort(port);
-  return { path, port, process };
+  return { containerId, port };
 }
 
 export async function stopRedis(server: TestServer): Promise<void> {
-  try {
-    await Deno.remove(server.path, { recursive: true });
-  } catch (error) {
-    if (!(error instanceof Deno.errors.NotFound)) {
-      throw error;
-    }
-  }
-
-  await ensureTerminated(server.process);
-}
-
-export async function ensureTerminated(
-  process: Deno.ChildProcess,
-): Promise<void> {
-  try {
-    await process.stderr.cancel();
-    process.kill("SIGKILL");
-    await process.status;
-  } catch (error) {
-    const alreadyKilled = error instanceof TypeError &&
-      error.message === "Child process has already terminated";
-    if (alreadyKilled) {
-      return;
-    }
-    throw error;
-  }
-}
-
-async function exists(path: string): Promise<boolean> {
-  try {
-    await Deno.stat(path);
-    return true;
-  } catch (err) {
-    if (err instanceof Deno.errors.NotFound) {
-      return false;
-    }
-    throw err;
-  }
+  await new Deno.Command("docker", {
+    args: ["stop", server.containerId],
+  }).output();
 }
 
 export function nextPort(): number {
-  // Random ephemeral port to avoid collisions under --parallel, where each
-  // V8 isolate gets its own module scope and the old sequential counter
-  // would always return the same starting value.
   return 1024 + Math.floor(Math.random() * (65_535 - 1024));
 }
 
 async function waitForPort(port: number): Promise<void> {
   let retries = 0;
-  const maxRetries = 5;
+  const maxRetries = 10;
   while (true) {
     try {
       const conn = await Deno.connect({ port });
@@ -105,15 +63,6 @@ async function waitForPort(port: number): Promise<void> {
       });
     }
   }
-}
-
-function tempPath(fileName: string): string {
-  const url = new URL(`../../tmp/${fileName}`, import.meta.url);
-  return url.pathname;
-}
-
-export function usesRedisVersion(version: "6" | "7"): boolean {
-  return !!Deno.env.get("REDIS_VERSION")?.startsWith(`${version}.`);
 }
 
 export function generateRandomRequest(): Request {

@@ -1,7 +1,7 @@
 import { create3, type Hasher } from "@jabr/xxhash64";
 import { monotonicUlid } from "@std/ulid";
 import msgpack from "msgpack-lite";
-import { type Codec } from "npm:@types/msgpack-lite@0.1.11";
+import type { Codec } from "npm:@types/msgpack-lite@0.1.11";
 
 import type {
   CachePersistenceBaseOptions,

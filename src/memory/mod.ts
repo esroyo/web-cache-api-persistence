@@ -16,7 +16,8 @@ export class CachePersistenceMemory extends CachePersistenceBase
   protected _storage: Record<string, PlainReqRes | Uint8Array> = Object
     .create(null);
   protected _indexes: Record<string, Set<string>> = Object.create(null);
-  protected _timers: Record<string, number> = Object.create(null);
+  protected _timers: Record<string, ReturnType<typeof setTimeout>> = Object
+    .create(null);
   protected _maxInteger: number = Math.pow(2, 31) - 1;
   protected override _options: CachePersistenceMemoryOptions;
 
