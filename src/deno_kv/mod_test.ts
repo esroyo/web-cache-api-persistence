@@ -2,9 +2,19 @@ import { assert, assertEquals } from "@std/assert";
 import { CachePersistenceDenoKv } from "./mod.ts";
 import { CacheStorage } from "../core/cache_storage.ts";
 import { runSharedTests } from "../_shared/cache_storage_test.ts";
+import { nextPort, startDenoKv } from "../_shared/test_utils.ts";
 import type { CachePersistenceDenoKvOptions } from "../core/types.ts";
 
 import denoKvDefault, { denoKv } from "./mod.ts";
+
+const denokvPort = nextPort();
+const denokvServer = await startDenoKv({ port: denokvPort });
+globalThis.addEventListener("unload", () => {
+  try {
+    new Deno.Command("docker", { args: ["stop", denokvServer.containerId] })
+      .outputSync();
+  } catch {}
+});
 
 Deno.test("denoKv factory", async (t) => {
   const baseOptions: CachePersistenceDenoKvOptions = {
@@ -75,7 +85,7 @@ const _kvSharedNormalizer = (name: string, value: string | null) =>
       create: async () =>
         new CachePersistenceDenoKv({
           ...opts,
-          path: "tmp/test-deno-kv-native",
+          path: `http://127.0.0.1:${denokvPort}`,
           max: 1,
           min: 1,
         }),
@@ -93,7 +103,7 @@ const _kvSharedNormalizer = (name: string, value: string | null) =>
         create: async () =>
           new CachePersistenceDenoKv({
             ...opts,
-            path: "tmp/test-deno-kv-native",
+            path: `http://127.0.0.1:${denokvPort}`,
             max: 1,
             min: 1,
           }),

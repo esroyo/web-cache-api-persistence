@@ -6,9 +6,14 @@ import denoKvDriver from "unstorage/drivers/deno-kv";
 import memoryDriver from "unstorage/drivers/lru-cache";
 import databaseDriver from "unstorage/drivers/db0";
 import { createDatabase } from "db0";
-import sqlite from "db0/connectors/node-sqlite";
+import postgresql from "db0/connectors/postgresql";
 import { runSharedTests } from "../_shared/cache_storage_test.ts";
-import { nextPort, startRedis } from "../_shared/test_utils.ts";
+import {
+  nextPort,
+  startDenoKv,
+  startPostgres,
+  startRedis,
+} from "../_shared/test_utils.ts";
 import { CachePersistenceUnstorage } from "./mod.ts";
 import { CacheStorage } from "../core/cache_storage.ts";
 import type { CacheLike } from "../core/types.ts";
@@ -62,6 +67,24 @@ globalThis.addEventListener("unload", () => {
   } catch {}
 });
 
+const _denokvPort = nextPort();
+const _denokvServer = await startDenoKv({ port: _denokvPort });
+globalThis.addEventListener("unload", () => {
+  try {
+    new Deno.Command("docker", { args: ["stop", _denokvServer.containerId] })
+      .outputSync();
+  } catch {}
+});
+
+const _pgPort = nextPort();
+const _pgServer = await startPostgres({ port: _pgPort });
+globalThis.addEventListener("unload", () => {
+  try {
+    new Deno.Command("docker", { args: ["stop", _pgServer.containerId] })
+      .outputSync();
+  } catch {}
+});
+
 const _normalizer = (name: string, value: string | null) =>
   name === "user-agent" ? "firefox" : value;
 
@@ -108,7 +131,6 @@ const _normalizer = (name: string, value: string | null) =>
 }
 
 {
-  const kvPath = "tmp/test-unstorage-kv";
   const opts = { staleRetention: "evict" as const };
   await runSharedTests(
     "unstorage:deno-kv:evict",
@@ -117,7 +139,9 @@ const _normalizer = (name: string, value: string | null) =>
         new CachePersistenceUnstorage({
           ...opts,
           storage: createUnstorage({
-            driver: denoKvDriver({ openKv: () => Deno.openKv(kvPath) }),
+            driver: denoKvDriver({
+              openKv: () => Deno.openKv(`http://127.0.0.1:${_denokvPort}`),
+            }),
           }),
         }),
     }, _normalizer),
@@ -126,7 +150,6 @@ const _normalizer = (name: string, value: string | null) =>
 }
 
 {
-  const kvPath = "tmp/test-unstorage-kv";
   const opts = { staleRetention: "retain" as const };
   await runSharedTests(
     "unstorage:deno-kv:retain",
@@ -135,7 +158,9 @@ const _normalizer = (name: string, value: string | null) =>
         new CachePersistenceUnstorage({
           ...opts,
           storage: createUnstorage({
-            driver: denoKvDriver({ openKv: () => Deno.openKv(kvPath) }),
+            driver: denoKvDriver({
+              openKv: () => Deno.openKv(`http://127.0.0.1:${_denokvPort}`),
+            }),
           }),
         }),
     }, _normalizer),
@@ -146,19 +171,28 @@ const _normalizer = (name: string, value: string | null) =>
 {
   const opts = { staleRetention: "evict" as const };
   await runSharedTests(
-    "unstorage:database:evict",
+    "unstorage:postgres:evict",
     new CacheStorage({
-      create: async () =>
-        new CachePersistenceUnstorage({
+      create: async () => {
+        const _pgDb = createDatabase(postgresql({
+          url: `postgresql://postgres:postgres@127.0.0.1:${_pgPort}/postgres`,
+        }));
+        // Suppress pg connection errors during container shutdown
+        (async () => {
+          const client = await _pgDb.getInstance().catch(() => null);
+          if (client && typeof client.on === "function") {
+            client.on("error", () => {});
+          }
+        })();
+        return new CachePersistenceUnstorage({
           ...opts,
           storage: createUnstorage({
             driver: databaseDriver({
-              database: createDatabase(
-                sqlite({ cwd: "tmp" }),
-              ),
+              database: _pgDb,
             }),
           }),
-        }),
+        });
+      },
     }, _normalizer),
     opts,
   );
@@ -167,19 +201,28 @@ const _normalizer = (name: string, value: string | null) =>
 {
   const opts = { staleRetention: "retain" as const };
   await runSharedTests(
-    "unstorage:database:retain",
+    "unstorage:postgres:retain",
     new CacheStorage({
-      create: async () =>
-        new CachePersistenceUnstorage({
+      create: async () => {
+        const _pgDb = createDatabase(postgresql({
+          url: `postgresql://postgres:postgres@127.0.0.1:${_pgPort}/postgres`,
+        }));
+        // Suppress pg connection errors during container shutdown
+        (async () => {
+          const client = await _pgDb.getInstance().catch(() => null);
+          if (client && typeof client.on === "function") {
+            client.on("error", () => {});
+          }
+        })();
+        return new CachePersistenceUnstorage({
           ...opts,
           storage: createUnstorage({
             driver: databaseDriver({
-              database: createDatabase(
-                sqlite({ cwd: "tmp" }),
-              ),
+              database: _pgDb,
             }),
           }),
-        }),
+        });
+      },
     }, _normalizer),
     opts,
   );

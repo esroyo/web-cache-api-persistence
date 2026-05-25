@@ -42,7 +42,8 @@
     "sorted": "npm:sorted-array-functions@1.3.0",
     "ioredis": "npm:ioredis@5.5.0",
     "unstorage": "npm:unstorage@1.17.5",
-    "db0": "npm:db0"
+    "db0": "npm:db0",
+    "pg": "npm:pg@8"
   },
   "nodeModulesDir": "none"
 }

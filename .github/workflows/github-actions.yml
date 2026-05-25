@@ -26,8 +26,6 @@ jobs:
         run: deno fmt --check src
       - name: Build Deno Module
         run: deno run --reload mod.ts
-      - name: Test test
-        run: deno task test
       - name: Test Deno Module
         run: deno task coverage
       - name: Upload coverage reports to Codecov

@@ -10,27 +10,75 @@ import memoryDriver from "unstorage/drivers/lru-cache";
 import redisDriver from "unstorage/drivers/redis";
 import databaseDriver from "unstorage/drivers/db0";
 import { createDatabase } from "db0";
-import sqlite from "db0/connectors/node-sqlite";
+import postgresql from "db0/connectors/postgresql";
 import {
   generateRandomRequest,
   generateRandomResponse,
   nextPort,
+  startDenoKv,
+  startPostgres,
   startRedis,
 } from "../src/_shared/test_utils.ts";
 
-const port = nextPort();
-const server = await startRedis({ port });
+const redisPort1 = nextPort();
+const redisServer1 = await startRedis({ port: redisPort1 });
 globalThis.addEventListener("unload", () => {
   try {
-    new Deno.Command("docker", { args: ["stop", server.containerId] })
+    new Deno.Command("docker", { args: ["stop", redisServer1.containerId] })
       .outputSync();
   } catch {}
 });
 
+const redisPort2 = nextPort();
+const redisServer2 = await startRedis({ port: redisPort2 });
+globalThis.addEventListener("unload", () => {
+  try {
+    new Deno.Command("docker", { args: ["stop", redisServer2.containerId] })
+      .outputSync();
+  } catch {}
+});
+
+const denokvPort1 = nextPort();
+const denokvServer1 = await startDenoKv({ port: denokvPort1 });
+globalThis.addEventListener("unload", () => {
+  try {
+    new Deno.Command("docker", { args: ["stop", denokvServer1.containerId] })
+      .outputSync();
+  } catch {}
+});
+
+const denokvPort2 = nextPort();
+const denokvServer2 = await startDenoKv({ port: denokvPort2 });
+globalThis.addEventListener("unload", () => {
+  try {
+    new Deno.Command("docker", { args: ["stop", denokvServer2.containerId] })
+      .outputSync();
+  } catch {}
+});
+
+const pgPort = nextPort();
+const pgServer = await startPostgres({ port: pgPort });
+globalThis.addEventListener("unload", () => {
+  try {
+    new Deno.Command("docker", { args: ["stop", pgServer.containerId] })
+      .outputSync();
+  } catch {}
+});
+
+const pgDb = createDatabase(postgresql({
+  url: `postgresql://postgres:postgres@127.0.0.1:${pgPort}/postgres`,
+}));
+(async () => {
+  const client = await pgDb.getInstance().catch(() => null);
+  if (client && typeof client.on === "function") {
+    client.on("error", () => {});
+  }
+})();
+
 const cachesRedis = new CacheStorage({
   create: async () =>
     new CachePersistenceDenoRedis({
-      port,
+      port: redisPort1,
       hostname: "127.0.0.1",
       // max: 1,
       // min: 1,
@@ -38,14 +86,15 @@ const cachesRedis = new CacheStorage({
 });
 const cacheRedis = await cachesRedis.open("default");
 
-const cachesKv = new CacheStorage({
+const cachesDenoKv = new CacheStorage({
   create: async () =>
     new CachePersistenceDenoKv({
+      path: `http://127.0.0.1:${denokvPort1}`,
       max: 1,
       min: 1,
     }),
 });
-const cacheKv = await cachesKv.open("default");
+const cacheDenoKv = await cachesDenoKv.open("default");
 
 const cachesMemory = new CacheStorage(CachePersistenceMemory);
 const cacheMemory = await cachesMemory.open("default");
@@ -56,7 +105,11 @@ const cachesUnstorageMem = new CacheStorage({
 });
 const cacheUnstorageMem = await cachesUnstorageMem.open("default");
 
-const storageKv = createStorage({ driver: denoKvDriver({}) });
+const storageKv = createStorage({
+  driver: denoKvDriver({
+    openKv: () => Deno.openKv(`http://127.0.0.1:${denokvPort2}`),
+  }),
+});
 const cachesUnstorageKv = new CacheStorage({
   create: async () => new CachePersistenceUnstorage({ storage: storageKv }),
 });
@@ -65,7 +118,7 @@ const cacheUnstorageKv = await cachesUnstorageKv.open("default");
 const cachesUnstorageRedis = new CacheStorage({
   create: async () => {
     const storage = createStorage({
-      driver: redisDriver({ url: `redis://127.0.0.1:${port}` }),
+      driver: redisDriver({ url: `redis://127.0.0.1:${redisPort2}` }),
     });
     return new CachePersistenceUnstorage({ storage });
   },
@@ -82,7 +135,7 @@ const cacheUnstorageFs = await cachesUnstorageFs.open("default");
 
 const storageDb = createStorage({
   driver: databaseDriver({
-    database: createDatabase(sqlite({ cwd: "tmp" })),
+    database: pgDb,
   }),
 });
 const cachesUnstorageDb = new CacheStorage({
@@ -180,21 +233,25 @@ Deno.bench(
   },
 );
 
-Deno.bench("CachePersistenceKv", { group: "put(req, res)" }, async (b) => {
-  const cache = cacheKv;
-  const request = generateRandomRequest();
-  const response = generateRandomResponse();
-  b.start();
-  try {
-    await cache.put(request, response);
-  } catch {}
-  b.end();
-  await cache.delete(request, {
-    ignoreMethod: true,
-    ignoreSearch: true,
-    ignoreVary: true,
-  });
-});
+Deno.bench(
+  "CachePersistenceDenoKv",
+  { group: "put(req, res)" },
+  async (b) => {
+    const cache = cacheDenoKv;
+    const request = generateRandomRequest();
+    const response = generateRandomResponse();
+    b.start();
+    try {
+      await cache.put(request, response);
+    } catch {}
+    b.end();
+    await cache.delete(request, {
+      ignoreMethod: true,
+      ignoreSearch: true,
+      ignoreVary: true,
+    });
+  },
+);
 
 Deno.bench(
   "CachePersistenceUnstorageMemory",
@@ -336,8 +393,8 @@ Deno.bench("CachePersistenceDenoRedis", { group: "match(req)" }, async (b) => {
   await clean();
 });
 
-Deno.bench("CachePersistenceKv", { group: "match(req)" }, async (b) => {
-  const cache = cacheKv;
+Deno.bench("CachePersistenceDenoKv", { group: "match(req)" }, async (b) => {
+  const cache = cacheDenoKv;
   const clean = await fillCache(cache);
   const request = generateRandomRequest();
   b.start();
@@ -462,15 +519,19 @@ Deno.bench(
   },
 );
 
-Deno.bench("CachePersistenceKv", { group: "matchAll(req)" }, async (b) => {
-  const cache = cacheKv;
-  const clean = await fillCache(cache);
-  const request = generateRandomRequest();
-  b.start();
-  await cache.matchAll(request);
-  b.end();
-  await clean();
-});
+Deno.bench(
+  "CachePersistenceDenoKv",
+  { group: "matchAll(req)" },
+  async (b) => {
+    const cache = cacheDenoKv;
+    const clean = await fillCache(cache);
+    const request = generateRandomRequest();
+    b.start();
+    await cache.matchAll(request);
+    b.end();
+    await clean();
+  },
+);
 
 Deno.bench(
   "CachePersistenceUnstorageMemory",
@@ -590,8 +651,8 @@ Deno.bench("CachePersistenceDenoRedis", { group: "matchAll()" }, async (b) => {
   await clean();
 });
 
-Deno.bench("CachePersistenceKv", { group: "matchAll()" }, async (b) => {
-  const cache = cacheKv;
+Deno.bench("CachePersistenceDenoKv", { group: "matchAll()" }, async (b) => {
+  const cache = cacheDenoKv;
   const clean = await fillCache(cache);
   b.start();
   await cache.matchAll();
@@ -703,8 +764,8 @@ Deno.bench("CachePersistenceDenoRedis", { group: "delete(req)" }, async (b) => {
   await clean();
 });
 
-Deno.bench("CachePersistenceKv", { group: "delete(req)" }, async (b) => {
-  const cache = cacheKv;
+Deno.bench("CachePersistenceDenoKv", { group: "delete(req)" }, async (b) => {
+  const cache = cacheDenoKv;
   const clean = await fillCache(cache);
   const request = generateRandomRequest();
   b.start();
@@ -831,8 +892,8 @@ Deno.bench("CachePersistenceDenoRedis", { group: "delete()" }, async (b) => {
   b.end();
 });
 
-Deno.bench("CachePersistenceKv", { group: "delete()" }, async (_b) => {
-  await cachesKv.delete("default");
+Deno.bench("CachePersistenceDenoKv", { group: "delete()" }, async (_b) => {
+  await cachesDenoKv.delete("default");
 });
 
 Deno.bench(
