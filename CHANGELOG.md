@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.4.6](https://github.com/esroyo/web-cache-api-persistence/compare/v0.4.5...v0.4.6) (2026-06-11)
+
+
+### Bug Fixes
+
+* **unstorage:** avoid throwing when malformed index value ([d90d831](https://github.com/esroyo/web-cache-api-persistence/commit/d90d831222cd1ee3784833f92b7e57e374c43d21))
+
 ## [0.4.5](https://github.com/esroyo/web-cache-api-persistence/compare/v0.4.4...v0.4.5) (2026-06-11)
 
 
