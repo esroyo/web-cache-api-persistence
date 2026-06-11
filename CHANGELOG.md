@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.4.5](https://github.com/esroyo/web-cache-api-persistence/compare/v0.4.4...v0.4.5) (2026-06-11)
+
+
+### Bug Fixes
+
+* **unstorage:** avoid driver exception when missing key ([b20c83c](https://github.com/esroyo/web-cache-api-persistence/commit/b20c83c88d74ba74f03b48918e2538295f1c92e9))
+
 ## [0.4.4](https://github.com/esroyo/web-cache-api-persistence/compare/v0.4.3...v0.4.4) (2026-06-11)
 
 
