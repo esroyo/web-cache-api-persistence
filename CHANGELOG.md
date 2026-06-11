@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.4.4](https://github.com/esroyo/web-cache-api-persistence/compare/v0.4.3...v0.4.4) (2026-06-11)
+
+
+### Bug Fixes
+
+* **unstorage:** avoid decoding error on empty/corrupted index ([e58d290](https://github.com/esroyo/web-cache-api-persistence/commit/e58d290c99f2acb8c53e556c84c82f80e0b20a39))
+
+
+### Other
+
+* migrate DenoKv/Postgres from local binary to Docker ([62f224e](https://github.com/esroyo/web-cache-api-persistence/commit/62f224e825d0b17886b4266fffdbf975928b5b9e))
+* migrate test Redis from local binary to Docker ([99098fc](https://github.com/esroyo/web-cache-api-persistence/commit/99098fcf1807c8dd0dfbf1aa3ef015d40a06653e))
+
 ## [0.4.3](https://github.com/esroyo/web-cache-api-persistence/compare/v0.4.2...v0.4.3) (2026-05-22)
 
 
