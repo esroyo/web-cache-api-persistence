@@ -15,6 +15,10 @@ export interface CachePersistenceUnstorageOptions
   storage: Storage;
 }
 
+function isEmpty(raw: unknown): boolean {
+  return raw instanceof Uint8Array ? raw.byteLength === 0 : !raw;
+}
+
 export class CachePersistenceUnstorage extends CachePersistenceBase
   implements CachePersistenceLike {
   protected _storage: Storage;
@@ -164,7 +168,7 @@ export class CachePersistenceUnstorage extends CachePersistenceBase
       const parts = this._splitKey(k);
       if (parts.length === 3 && parts[2].endsWith("_")) {
         const raw = await this._storage.getItemRaw(k);
-        if (!raw) {
+        if (isEmpty(raw)) {
           continue;
         }
         const entries = this._parseIndex(raw);
@@ -179,7 +183,7 @@ export class CachePersistenceUnstorage extends CachePersistenceBase
   protected async _dbKeys(key: string[] | string): Promise<string[]> {
     const indexKey = this._indexKey(key);
     const raw = await this._storage.getItemRaw(indexKey);
-    if (!raw) {
+    if (isEmpty(raw)) {
       return [];
     }
     const entries = this._parseIndex(raw);
@@ -209,7 +213,7 @@ export class CachePersistenceUnstorage extends CachePersistenceBase
 
     const indexKey = this._indexKey(key);
     const raw = await this._storage.getItemRaw(indexKey);
-    if (!raw) {
+    if (isEmpty(raw)) {
       return !!existing;
     }
 
@@ -247,7 +251,9 @@ export class CachePersistenceUnstorage extends CachePersistenceBase
 
     const indexKey = this._indexKey(key);
     const rawIndex = await this._storage.getItemRaw(indexKey);
-    const entries = rawIndex ? this._parseIndex(rawIndex) : new Set<string>();
+    const entries = isEmpty(rawIndex)
+      ? new Set<string>()
+      : this._parseIndex(rawIndex);
     entries.add(persistenceKey);
     await this._storage.setItemRaw(indexKey, this._serializeIndex(entries));
   }
