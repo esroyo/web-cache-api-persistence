@@ -295,7 +295,12 @@ export class CachePersistenceUnstorage extends CachePersistenceBase
     const str = raw instanceof Uint8Array
       ? new TextDecoder().decode(raw)
       : String(raw);
-    return new Set(JSON.parse(str));
+    try {
+      return new Set(JSON.parse(str));
+    } catch {
+      // Corrupted index (truncated or partial write) — treat as empty.
+      return new Set();
+    }
   }
 }
 

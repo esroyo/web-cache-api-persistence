@@ -397,30 +397,48 @@ Deno.test("Unstorage — stale index entry pointing to missing value returns und
   );
 });
 
-Deno.test("Unstorage — corrupted index key returns empty set", async () => {
-  const storage = createUnstorage();
-  await using cache = await createCache({ storage });
-  const req = new Request("http://example.com/corrupted");
-  const res = new Response("body", {
-    headers: { "cache-control": "max-age=3600" },
-  });
-  await cache.put(req, res);
+Deno.test("Unstorage — corrupted index key returns empty set", async (t) => {
+  const cases: Array<{ label: string; corrupt: Uint8Array | string }> = [
+    {
+      label: "zero-length Uint8Array",
+      corrupt: new Uint8Array(0),
+      // `new Uint8Array(0)` is truthy so a plain `!raw` guard would not catch
+      // it; without `isEmpty`, TextDecoder decodes it to "" and JSON.parse("")
+      // throws SyntaxError: Unexpected end of JSON input.
+    },
+    {
+      label: "truncated JSON",
+      corrupt: '["cachestorage:name:',
+      // Partial write — non-empty, passes `isEmpty`, but JSON.parse throws
+      // SyntaxError: Unexpected non-whitespace character after JSON.
+    },
+  ];
 
-  // Overwrite the index key with a zero-length Uint8Array to simulate
-  // corruption (e.g. a TTL-evicted key the driver returns as present-but-empty).
-  // `new Uint8Array(0)` is truthy so a plain `!raw` guard would not catch it;
-  // without `isEmpty`, TextDecoder decodes it to "" and JSON.parse("") throws
-  // SyntaxError: Unexpected end of JSON input.
-  const allKeys = await storage.getKeys();
-  const indexKey = allKeys.find((k) => k.endsWith("_"));
-  if (indexKey) {
-    await storage.setItemRaw(indexKey, new Uint8Array(0));
+  for (const { label, corrupt } of cases) {
+    await t.step(
+      `should treat ${label} index as a cache miss, not throw`,
+      async () => {
+        const storage = createUnstorage();
+        await using cache = await createCache({ storage });
+        const req = new Request("http://example.com/corrupted");
+        const res = new Response("body", {
+          headers: { "cache-control": "max-age=3600" },
+        });
+        await cache.put(req, res);
+
+        const allKeys = await storage.getKeys();
+        const indexKey = allKeys.find((k) => k.endsWith("_"));
+        if (indexKey) {
+          await storage.setItemRaw(indexKey, corrupt);
+        }
+
+        const result = await cache.match(req);
+        assertEquals(
+          result,
+          undefined,
+          `should treat ${label} index as a cache miss, not throw`,
+        );
+      },
+    );
   }
-
-  const result = await cache.match(req);
-  assertEquals(
-    result,
-    undefined,
-    "should treat a zero-length Uint8Array index as a cache miss, not throw",
-  );
 });
