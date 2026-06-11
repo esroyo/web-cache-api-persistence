@@ -194,8 +194,16 @@ export class CachePersistenceUnstorage extends CachePersistenceBase
     key: string[] | string,
   ): Promise<PlainReqRes | null> {
     const persistenceKey = Array.isArray(key) ? this._joinKey(key) : key;
-    const raw = await this._storage.getItemRaw(persistenceKey);
-    if (!raw) {
+    let raw: unknown;
+    try {
+      raw = await this._storage.getItemRaw(persistenceKey);
+    } catch {
+      // Some drivers (e.g. fs) throw ENOENT instead of returning null for a
+      // missing key — treat as not-found and clean up the stale index entry.
+      await this._dbDel(key);
+      return null;
+    }
+    if (isEmpty(raw)) {
       await this._dbDel(key);
       return null;
     }
@@ -206,8 +214,13 @@ export class CachePersistenceUnstorage extends CachePersistenceBase
     key: string[] | string,
   ): Promise<boolean> {
     const persistenceKey = Array.isArray(key) ? this._joinKey(key) : key;
-    const existing = await this._storage.getItemRaw(persistenceKey);
-    if (existing) {
+    let existing: unknown;
+    try {
+      existing = await this._storage.getItemRaw(persistenceKey);
+    } catch {
+      // Driver threw (e.g. ENOENT from fs) — treat as absent.
+    }
+    if (!isEmpty(existing)) {
       await this._storage.removeItem(persistenceKey);
     }
 

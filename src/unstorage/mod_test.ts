@@ -364,6 +364,39 @@ Deno.test("Unstorage — error propagation", async () => {
   throwingStorage.setItemRaw = originalSet;
 });
 
+Deno.test("Unstorage — stale index entry pointing to missing value returns undefined", async () => {
+  const storage = createUnstorage();
+  await using cache = await createCache({ storage });
+  const req = new Request("http://example.com/stale");
+  const res = new Response("body", {
+    headers: { "cache-control": "max-age=3600" },
+  });
+  await cache.put(req, res);
+
+  // Remove the value key while leaving the index entry intact, simulating a
+  // driver that throws (e.g. ENOENT from fs) instead of returning null for a
+  // missing key.
+  const allKeys = await storage.getKeys();
+  const valueKey = allKeys.find((k) => !k.endsWith("_"));
+  if (valueKey) {
+    await storage.removeItem(valueKey);
+  }
+
+  // Overwrite getItemRaw to throw for the missing key, as the fs driver does.
+  const originalGetItemRaw = storage.getItemRaw.bind(storage);
+  storage.getItemRaw = async (key: string) => {
+    if (key === valueKey) throw new Error("ENOENT: no such file or directory");
+    return originalGetItemRaw(key);
+  };
+
+  const result = await cache.match(req);
+  assertEquals(
+    result,
+    undefined,
+    "should treat a driver-thrown ENOENT as a cache miss, not propagate the error",
+  );
+});
+
 Deno.test("Unstorage — corrupted index key returns empty set", async () => {
   const storage = createUnstorage();
   await using cache = await createCache({ storage });
